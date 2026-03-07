@@ -145,6 +145,8 @@ def translate_segment(audio_path, segment_index, offset_seconds, target_language
     
     try:
         result = json.loads(response.text)
+        if isinstance(result, list):
+            result = result[0]
         content = result.get("srt_content", "")
         return fix_srt_format(content, offset_seconds)
     except:
