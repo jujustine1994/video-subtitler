@@ -1,0 +1,16 @@
+# API 金鑰（絕對不能上傳）
+.env
+
+# Python 虛擬環境（太大，不需要上傳）
+venv/
+
+# Python 快取
+__pycache__/
+*.pyc
+*.pyo
+
+# 暫存音訊檔
+temp_seg_*.mp3
+
+# 輸出的字幕檔（個人使用，不需版控）
+*.srt
