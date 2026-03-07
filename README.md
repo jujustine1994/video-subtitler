@@ -22,10 +22,11 @@
 
 1. 確認已安裝 [FFmpeg](https://ffmpeg.org/) 並加入系統環境變數
 2. 準備好 [Google Gemini API Key](https://aistudio.google.com/app/apikey)（免費版即可）
-3. 點擊 `啟動翻譯.bat` 執行程式
-4. 閱讀說明後按 Enter，選取影片檔案
-5. 輸入或確認 API Key
-6. 等待處理完成，`.srt` 字幕檔會出現在影片旁邊
+3. 將 `.env.example` 複製並改名為 `.env`，填入你的 Gemini API Key
+4. 點擊 `啟動翻譯.bat` 執行程式
+5. 閱讀說明後按 Enter，選取影片檔案
+6. 輸入或確認 API Key
+7. 等待處理完成，`.srt` 字幕檔會出現在影片旁邊
 
 ### 注意事項
 
@@ -54,10 +55,11 @@ Automatically generate Traditional Chinese `.srt` subtitle files for videos with
 
 1. Install [FFmpeg](https://ffmpeg.org/) and add it to your system PATH
 2. Get a [Google Gemini API Key](https://aistudio.google.com/app/apikey) (free tier works)
-3. Run `啟動翻譯.bat`
-4. Read the instructions and press Enter, then select your video file
-5. Enter or confirm your API Key
-6. Wait for processing to finish — the `.srt` file will appear next to the video
+3. Copy `.env.example`, rename it to `.env`, and fill in your Gemini API Key
+4. Run `啟動翻譯.bat`
+5. Read the instructions and press Enter, then select your video file
+6. Enter or confirm your API Key
+7. Wait for processing to finish — the `.srt` file will appear next to the video
 
 ### Limitations
 
