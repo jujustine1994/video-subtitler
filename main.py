@@ -58,6 +58,36 @@ def get_video_duration(video_path):
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     return float(result.stdout)
 
+def enforce_max_duration(srt_text, max_seconds=5):
+    """掃描 SRT 內容，將超過 max_seconds 的字幕截斷"""
+    lines = srt_text.split('\n')
+    result = []
+    ts_pattern = re.compile(r'(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})')
+
+    def ts_to_ms(ts):
+        h, m, s_ms = ts.split(':')
+        s, ms = s_ms.split(',')
+        return int(h)*3600000 + int(m)*60000 + int(s)*1000 + int(ms)
+
+    def ms_to_ts(ms):
+        h = ms // 3600000; ms %= 3600000
+        m = ms // 60000;   ms %= 60000
+        s = ms // 1000;    ms %= 1000
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    for line in lines:
+        m = ts_pattern.match(line.strip())
+        if m:
+            start_ms = ts_to_ms(m.group(1))
+            end_ms = ts_to_ms(m.group(2))
+            if end_ms - start_ms > max_seconds * 1000:
+                end_ms = start_ms + max_seconds * 1000
+            result.append(f"{ms_to_ts(start_ms)} --> {ms_to_ts(end_ms)}")
+        else:
+            result.append(line)
+    return '\n'.join(result)
+
+
 def fix_srt_format(srt_text, offset_seconds=0):
     """
     極致強化的 SRT 格式修復工具，並處理時間偏移
@@ -208,7 +238,7 @@ def main():
             start_time = i * CHUNK_DURATION
             if start_time >= duration: break
             
-            temp_audio = f"temp_seg_{i}.mp3"
+            temp_audio = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"temp_seg_{i}.mp3")
             temp_files.append(temp_audio)
             
             # 使用 ffmpeg 擷取
@@ -217,7 +247,10 @@ def main():
                 '-i', video_path, '-vn', '-acodec', 'libmp3lame', '-y', temp_audio
             ]
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
+
+            if not os.path.exists(temp_audio):
+                raise Exception("ffmpeg 音訊擷取失敗，請確認 FFmpeg 已安裝並加入系統環境變數（PATH）。")
+
             srt_seg = translate_segment(temp_audio, i, start_time)
             full_srt.append(srt_seg)
             
@@ -226,8 +259,9 @@ def main():
         print(f"\n[步驟 3/3] 正在合併並產出最終字幕檔...")
         final_srt_path = os.path.splitext(video_path)[0] + ".srt"
         
+        merged = enforce_max_duration("\n".join(full_srt))
         with open(final_srt_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(full_srt))
+            f.write(merged)
         
         print(f"\n恭喜！任務完成。")
         print(f"字幕儲存在: {final_srt_path}")

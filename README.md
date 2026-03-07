@@ -1,7 +1,9 @@
 # video-subtitler
 
-- **專案類型**: Python 腳本
+- **規則檔**: windows-tool.md
+- **專案類型**: Windows 工具
 - **技術棧**: Python, FFmpeg, Google Gemini API
+- **.gitignore 規則**: `.env`、`venv/`、`__pycache__/`、`*.pyc`、`*.srt`、`temp_seg_*.mp3`
 
 ---
 
