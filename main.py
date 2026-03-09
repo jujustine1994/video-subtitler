@@ -12,6 +12,7 @@ from dotenv import load_dotenv, set_key
 CHUNK_DURATION = 1800 
 
 def setup_api_key():
+    """從 .env 讀取 API Key；若已有則讓使用者確認沿用或重新輸入，並自動儲存"""
     load_dotenv()
     existing_key = os.getenv("GEMINI_API_KEY", "")
 
@@ -37,6 +38,7 @@ def setup_api_key():
 
 
 def select_file():
+    """開啟系統檔案選取視窗，讓使用者選取影片檔案，回傳路徑字串"""
     root = tk.Tk()
     root.withdraw()
     root.wm_attributes('-topmost', True)
@@ -57,6 +59,19 @@ def get_video_duration(video_path):
     ]
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     return float(result.stdout)
+
+def renumber_srt(srt_text):
+    """重新編號合併後的 SRT，確保序號連續不重複"""
+    counter = 1
+    result = []
+    number_pattern = re.compile(r'^\d+$')
+    for line in srt_text.split('\n'):
+        if number_pattern.match(line.strip()):
+            result.append(str(counter))
+            counter += 1
+        else:
+            result.append(line)
+    return '\n'.join(result)
 
 def enforce_max_duration(srt_text, max_seconds=5):
     """掃描 SRT 內容，將超過 max_seconds 的字幕截斷"""
@@ -203,6 +218,7 @@ def main():
         print("已取消。")
         return
 
+    # --- 選取影片 & 設定 API ---
     video_path = select_file()
     if not video_path: return
 
@@ -213,8 +229,9 @@ def main():
     if not api_key: return
     genai.configure(api_key=api_key)
     print()
-    
+
     try:
+        # --- 計算分段數 ---
         duration = get_video_duration(video_path)
         print(f"影片總時長: {int(duration // 60)} 分 {int(duration % 60)} 秒")
 
@@ -227,6 +244,7 @@ def main():
         full_srt = []
         temp_files = []
 
+        # --- 逐段擷取音訊並翻譯 ---
         print()
         if num_segments > 1:
             print(f"本影片超過 30 分鐘，將切為 {num_segments} 段處理字幕，開始處理...")
@@ -256,10 +274,11 @@ def main():
             
             if os.path.exists(temp_audio): os.remove(temp_audio)
 
+        # --- 合併所有分段，產出最終 .srt ---
         print(f"\n[步驟 3/3] 正在合併並產出最終字幕檔...")
         final_srt_path = os.path.splitext(video_path)[0] + ".srt"
         
-        merged = enforce_max_duration("\n".join(full_srt))
+        merged = renumber_srt(enforce_max_duration("\n".join(full_srt)))
         with open(final_srt_path, "w", encoding="utf-8") as f:
             f.write(merged)
         

@@ -47,7 +47,7 @@ echo.
 python main.py
 set EXIT_CODE=%errorlevel%
 
-if exist __pycache__ rmdir /s /q __pycache__
+if exist __pycache__ rmdir /s /q __pycache__  :: 清除 Python 編譯快取，避免殘留
 
 if %EXIT_CODE% neq 0 (
     echo.
