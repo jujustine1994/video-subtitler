@@ -1,7 +1,7 @@
 # CHANGELOG
 
 ## 現狀總覽
-- **目前狀態**: 穩定版本 (v1.5.2)
+- **目前狀態**: 穩定版本 (v2.0)
 - **既有功能**:
     - 分段式處理 (每 30 分鐘一段)，支援超長影片。
     - 使用 ffmpeg/ffprobe 進行高精度切割與擷取。
@@ -14,10 +14,19 @@
     - 分段數量提示（超過 30 分鐘自動顯示切段數）。
     - API 用量超限中文錯誤提示。
     - 自動清除 __pycache__。
+    - 啟動器架構：薄 BAT（2 行）+ launcher.ps1（UTF-8 BOM），解決中文亂碼問題。
+    - SDK 使用 google-genai（新版），取代已棄用的 google-generativeai。
 
 ---
 
 ## 更新記錄
+
+### 2026-03-11 (v2.0)
+- **架構**: 啟動器改為薄 BAT（2 行）+ launcher.ps1 架構，所有邏輯與中文訊息移至 PS1，徹底解決 BAT 中文亂碼問題
+- **架構**: launcher.ps1 加 UTF-8 BOM，確保 Windows PowerShell 5.x 正確解析中文
+- **升級**: requirements.txt 將 `google-generativeai`（已棄用）替換為 `google-genai`（新版 SDK）
+- **升級**: main.py 遷移至新 SDK API：`genai.Client`、`client.files.upload/get/delete`、`client.models.generate_content`
+- **新增**: PITFALLS.md 初始化（供後續累積踩坑記錄）
 
 ### 2026-03-11 (v1.5.2)
 - **新增**: bat 自動偵測並安裝 Python（winget 優先，fallback 為 PowerShell 下載安裝程式）
