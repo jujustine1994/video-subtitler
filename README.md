@@ -1,5 +1,14 @@
 # video-subtitler
 
+```
+/*  ================================  *\
+ *                                    *
+ *          C  T  H                   *
+ *        created by CTH              *
+ *                                    *
+\*  ================================  */
+```
+
 - **規則檔**: windows-tool.md
 - **專案類型**: Windows 工具
 - **技術棧**: Python, FFmpeg, Google Gemini API

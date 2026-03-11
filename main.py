@@ -5,8 +5,30 @@ import re
 import subprocess
 import tkinter as tk
 from tkinter import filedialog
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv, set_key
+
+_client = None
+
+def show_cth_banner():
+    b = "\033[90m"   # 邊框：深灰
+    c = "\033[96m"   # CTH 字母：亮青
+    y = "\033[93m"   # 署名：金黃
+    r = "\033[0m"    # reset
+
+    print(f"{b}/*  ================================  *\\{r}")
+    print(f"{b} *                                    *{r}")
+    print(f"{b} *    {c}██████╗████████╗██╗  ██╗{b}        *{r}")
+    print(f"{b} *   {c}██╔════╝   ██║   ██║  ██║{b}        *{r}")
+    print(f"{b} *   {c}██║        ██║   ███████║{b}        *{r}")
+    print(f"{b} *   {c}██║        ██║   ██╔══██║{b}        *{r}")
+    print(f"{b} *   {c}╚██████╗   ██║   ██║  ██║{b}        *{r}")
+    print(f"{b} *    {c}╚═════╝   ╚═╝   ╚═╝  ╚═╝{b}        *{r}")
+    print(f"{b} *                                    *{r}")
+    print(f"{b} *          {y}created by CTH{b}            *{r}")
+    print(f"{b}\\*  ================================  */{r}")
+    print()
 
 # 每段處理的長度（秒），建議 1800 秒 (30 分鐘)
 CHUNK_DURATION = 1800 
@@ -153,19 +175,14 @@ def fix_srt_format(srt_text, offset_seconds=0):
 def translate_segment(audio_path, segment_index, offset_seconds, target_language="繁體中文"):
     print(f"\n   -> 正在處理第 {segment_index+1} 段 (起始時間: {int(offset_seconds//60)} 分)...")
     
-    audio_file = genai.upload_file(path=audio_path)
+    audio_file = _client.files.upload(file=audio_path)
     while audio_file.state.name == "PROCESSING":
         print(".", end="", flush=True)
         time.sleep(2)
-        audio_file = genai.get_file(audio_file.name)
+        audio_file = _client.files.get(name=audio_file.name)
 
     print(f"\n   -> AI 已就緒，開始翻譯 (gemini-flash-latest)...")
 
-    model = genai.GenerativeModel(
-        model_name="gemini-flash-latest",
-        generation_config={"response_mime_type": "application/json"}
-    )
-    
     # 套用用戶優化後的「完美版」Prompt
     prompt = f"""
     請聽這段音訊，將其內容翻譯為 {target_language}，並輸出標準 SRT 字幕格式。
@@ -185,8 +202,12 @@ def translate_segment(audio_path, segment_index, offset_seconds, target_language
     3. 僅在「完全沒有人聲」的片段（純音樂、純雜音、非語言情緒音、呻吟聲、笑聲、哭聲）才略過，不輸出該段字幕。
     """
 
-    response = model.generate_content([prompt, audio_file])
-    genai.delete_file(audio_file.name)
+    response = _client.models.generate_content(
+        model="gemini-flash-latest",
+        contents=[prompt, audio_file],
+        config=types.GenerateContentConfig(response_mime_type="application/json")
+    )
+    _client.files.delete(name=audio_file.name)
     
     try:
         result = json.loads(response.text)
@@ -198,6 +219,8 @@ def translate_segment(audio_path, segment_index, offset_seconds, target_language
         return fix_srt_format(response.text, offset_seconds)
 
 def main():
+    os.system('cls')
+    show_cth_banner()
     print("="*50)
     print("      Gemini 影片字幕翻譯專業版 (v1.3)      ")
     print("="*50)
@@ -227,7 +250,8 @@ def main():
 
     api_key = setup_api_key()
     if not api_key: return
-    genai.configure(api_key=api_key)
+    global _client
+    _client = genai.Client(api_key=api_key)
     print()
 
     try:
