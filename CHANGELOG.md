@@ -21,6 +21,12 @@
 
 ## 更新記錄
 
+### 2026-03-16
+- **新增**: launcher.ps1 加入系統架構偵測（`$isArm64`）
+- **修正**: Python fallback 下載從寫死 `amd64.exe` 改為根據架構動態選擇 `amd64` / `arm64`
+- **新增**: ARM64 電腦找不到 Python 時顯示警告，引導移除舊版 x64 再重裝
+- **新增**: ffmpeg 在 ARM64 安裝完成後提示「x64 版透過模擬執行，功能正常但速度略慢」
+
 ### 2026-03-11 (v2.0)
 - **架構**: 啟動器改為薄 BAT（2 行）+ launcher.ps1 架構，所有邏輯與中文訊息移至 PS1，徹底解決 BAT 中文亂碼問題
 - **架構**: launcher.ps1 加 UTF-8 BOM，確保 Windows PowerShell 5.x 正確解析中文

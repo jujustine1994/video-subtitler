@@ -9,12 +9,23 @@ Clear-Host
 Write-Host "[INFO] Starting Gemini 影片字幕翻譯工具..." -ForegroundColor Green
 Write-Host ""
 
+# 偵測系統架構
+$isArm64 = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64'
+
 # ======================================
 # [1/4] 檢查 Python
 # ======================================
 Write-Host "[1/4] 檢查 Python 環境..." -ForegroundColor Cyan
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     Write-Host "[WARNING] 未偵測到 Python，本程式需要 Python 才能執行。" -ForegroundColor Yellow
+    if ($isArm64) {
+        Write-Host ""
+        Write-Host "  [!] 偵測到您的電腦是 ARM 架構（例如 Snapdragon X 系列筆電）。" -ForegroundColor Yellow
+        Write-Host "  [!] 如果您之前已安裝過 Python 但還是看到這個訊息，" -ForegroundColor Yellow
+        Write-Host "      請先到「設定 → 應用程式」搜尋 Python 並移除，" -ForegroundColor Yellow
+        Write-Host "      移除後重新點兩下啟動檔，我們會自動幫您安裝正確版本。" -ForegroundColor Yellow
+        Write-Host ""
+    }
     $ans = Read-Host "是否要立即安裝 Python？[Y/n] - 直接按 Enter 代表同意"
     if ($ans -eq "" -or $ans -ieq "Y") {
         if (Get-Command winget -ErrorAction SilentlyContinue) {
@@ -22,8 +33,9 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
             winget install --id Python.Python.3 -e --silent --accept-source-agreements --accept-package-agreements
         } else {
             Write-Host "[INFO] 正在下載 Python 安裝程式，請稍候..." -ForegroundColor Gray
+            $arch = if ($isArm64) { "arm64" } else { "amd64" }
             $out = "$env:TEMP\python_installer.exe"
-            Invoke-WebRequest 'https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe' -OutFile $out
+            Invoke-WebRequest "https://www.python.org/ftp/python/3.12.9/python-3.12.9-$arch.exe" -OutFile $out
             Start-Process $out -ArgumentList '/quiet InstallAllUsers=0 PrependPath=1' -Wait
             Remove-Item $out -Force -ErrorAction SilentlyContinue
         }
@@ -62,6 +74,10 @@ if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
             Read-Host "按 Enter 關閉"; exit 0
         }
         Write-Host "[OK] FFmpeg 安裝完成。" -ForegroundColor Green
+        if ($isArm64) {
+            Write-Host "  [!] 注意：ffmpeg 目前沒有 Windows ARM 原生版本，" -ForegroundColor Yellow
+            Write-Host "      安裝的是 x64 版本，會透過模擬執行，功能正常但速度略慢。" -ForegroundColor Yellow
+        }
     } else {
         Write-Host "已取消。" -ForegroundColor Gray; Read-Host "按 Enter 關閉"; exit 1
     }
