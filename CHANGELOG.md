@@ -21,6 +21,9 @@
 
 ## 更新記錄
 
+### 2026-06-10
+- 修正：`winget install Python` 加入 `--override "/quiet PrependPath=1 Include_pip=1"`，確保靜默安裝後 Python 自動加進 PATH
+
 ### 2026-03-16
 - **新增**: launcher.ps1 加入系統架構偵測（`$isArm64`）
 - **修正**: Python fallback 下載從寫死 `amd64.exe` 改為根據架構動態選擇 `amd64` / `arm64`
