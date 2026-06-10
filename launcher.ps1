@@ -30,7 +30,7 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     if ($ans -eq "" -or $ans -ieq "Y") {
         if (Get-Command winget -ErrorAction SilentlyContinue) {
             Write-Host "[INFO] 透過 winget 安裝 Python，請稍候..." -ForegroundColor Gray
-            winget install --id Python.Python.3 -e --silent --accept-source-agreements --accept-package-agreements
+            winget install --id Python.Python.3 -e --silent --accept-source-agreements --accept-package-agreements --override "/quiet PrependPath=1 Include_pip=1"
         } else {
             Write-Host "[INFO] 正在下載 Python 安裝程式，請稍候..." -ForegroundColor Gray
             $arch = if ($isArm64) { "arm64" } else { "amd64" }
