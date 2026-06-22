@@ -1,25 +1,35 @@
 # CHANGELOG
 
 ## 現狀總覽
-- **目前狀態**: 穩定版本 (v2.0)
+- **目前狀態**: 穩定版本 (v3.0，Tkinter GUI 改版)
 - **既有功能**:
+    - Tkinter GUI 主畫面：選檔、API Key 欄、開始按鈕、進度條、即時 log。
     - 分段式處理 (每 30 分鐘一段)，支援超長影片。
     - 使用 ffmpeg/ffprobe 進行高精度切割與擷取。
     - JSON Mode + Regex Fixer 雙重保證字幕格式正確。
     - 自動過濾非語言聲音（呻吟、笑聲、哭聲、雜音、純音樂）。
-    - 彈出式檔案選取介面（修正偶發性不顯示問題）。
-    - 啟動說明畫面 + 確認提示。
-    - API Key 記憶功能（儲存於 .env，下次自動沿用）。
+    - 段落級 Gemini API 失敗自動 retry（429/timeout/連線錯誤，指數後退 5s/15s/45s，重試 3 次）。
+    - 重試耗盡的失敗段不中斷流程，跑完後在 GUI 列出失敗段供勾選補跑、重新合併輸出。
+    - API Key 記憶功能（儲存於 .env，GUI 啟動自動帶入）。
     - 每條字幕最長 5 秒限制。
-    - 分段數量提示（超過 30 分鐘自動顯示切段數）。
-    - API 用量超限中文錯誤提示。
-    - 自動清除 __pycache__。
-    - 啟動器架構：薄 BAT（2 行）+ launcher.ps1（UTF-8 BOM），解決中文亂碼問題。
+    - 三套 GUI 主題（清爽白/深色/金融藍）。
+    - 視窗可手動調整大小，固定初始尺寸不因內容變化（log 變長、失敗段變多）被自動撐大；失敗段勾選清單超出固定高度時可捲動查看。
+    - 啟動器架構：薄 BAT（2 行）+ launcher.ps1（UTF-8 BOM），解決中文亂碼問題；背後 console 保留供除錯。
     - SDK 使用 google-genai（新版），取代已棄用的 google-generativeai。
+- **檔案結構**: 邏輯搬至 `src/translator.py`（純邏輯）+ `src/gui.py`（UI），`main.py` 僅為入口；MD 文件統一收進 `docs/`。
 
 ---
 
 ## 更新記錄
+
+### 2026-06-22
+- **架構**: main.py 終端機互動式改為 Tkinter GUI（`src/gui.py` + `src/translator.py`），依 `windows-tool/tkinter-ui` 模板庫骨架建置
+- **新增**: Gemini API 呼叫段落級 retry 機制（429/timeout/連線錯誤才重試，指數後退，3 次後標記該段失敗不中斷流程）
+- **新增**: GUI 失敗段補跑功能 — 跑完後列出失敗段勾選框，可單獨重試並重新合併輸出
+- **新增**: GUI 三主題（清爽白/深色/金融藍）、status bar、API Key 顯示切換
+- **整理**: ARCHITECTURE.md / CHANGELOG.md / PITFALLS.md / TODO.md 搬入 `docs/`，符合 windows-tool.md 目錄規範
+- **新增**: 視窗改為可手動調整大小（`resizable(True, True)`），並設定固定初始尺寸 `560x680`，避免內容變化（log 增長、失敗段增多）時被自動撐大
+- **新增**: 失敗段勾選清單改為固定高度（110px）+ Canvas/Scrollbar 捲動容器，段數很多時可捲動查看而不裁切、不撐大視窗
 
 ### 2026-06-10
 - 修正：`winget install Python` 加入 `--override "/quiet PrependPath=1 Include_pip=1"`，確保靜默安裝後 Python 自動加進 PATH

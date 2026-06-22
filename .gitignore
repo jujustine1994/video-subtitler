@@ -14,3 +14,6 @@ temp_seg_*.mp3
 
 # 輸出的字幕檔（個人使用，不需版控）
 *.srt
+
+# GUI 設定檔（本機主題偏好）
+.tool_config.json
