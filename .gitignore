@@ -9,6 +9,10 @@ __pycache__/
 *.pyc
 *.pyo
 
+# 執行紀錄（logs/app.log 累積檔，不版控）
+logs/
+*.log
+
 # 暫存音訊檔
 temp_seg_*.mp3
 

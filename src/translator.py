@@ -11,10 +11,28 @@ from google import genai
 from google.genai import types
 
 CHUNK_DURATION = 1800  # 每段處理長度（秒），30 分鐘
+MODEL_NAME = "gemini-flash-latest"  # 供 log 任務起始行標示，翻譯呼叫也共用此常數
 
 RETRY_DELAYS = (5, 15, 45)  # 指數後退秒數
 RETRYABLE_MARKERS = ("429", "quota", "exhausted", "timeout", "timed out",
                       "connection", "unavailable", "deadline")
+
+
+def _safe_err(e: Exception) -> str:
+    """回傳「可安全落檔」的錯誤摘要：只有 exception 類型 + HTTP status code。
+
+    google-genai / requests 的例外訊息（str(e)）天生挾帶完整 request URL——URL 裡就有
+    ?key=<GEMINI_API_KEY>——以及 response 全文。**絕對不可** f"{e}" 落檔，否則等於把金鑰
+    寫上磁碟。要辨識是哪一筆，靠任務起始行的檔名/模型，不靠這裡的 URL。
+    """
+    name = type(e).__name__
+    # google.genai.errors.APIError 用 .code 帶 HTTP status；部分例外用 .status_code
+    code = getattr(e, "code", None)
+    if code is None:
+        code = getattr(e, "status_code", None)
+    if code is not None:
+        return f"{name}: HTTP {code}"
+    return name
 
 
 def make_client(api_key: str):
@@ -138,11 +156,14 @@ def _is_retryable(err: Exception) -> bool:
 
 
 def translate_segment(client, audio_path: str, segment_index: int, offset_seconds: float,
-                       target_language: str = "繁體中文", on_log=None, on_retry=None) -> str:
+                       target_language: str = "繁體中文", on_log=None, on_retry=None,
+                       on_error=None) -> str:
     """
     上傳音訊並呼叫 Gemini 翻譯成 SRT，失敗時依 RETRYABLE_MARKERS 判斷是否重試。
-    on_log(str)：一般進度訊息
-    on_retry(attempt, delay)：重試前回報嘗試次數與等待秒數
+    on_log(str)：一般進度訊息（不落檔）
+    on_retry(attempt, delay)：重試前回報嘗試次數與等待秒數（UI 用，不落檔）
+    on_error(str)：把「已消毒」的錯誤摘要（型別 + status code + 重試次數，絕無金鑰）
+                   交回呼叫端落檔為 ERROR 行。**不會**傳入 str(e)。
     成功回傳修復後的 SRT 文字；重試耗盡仍失敗則拋出最後一次例外。
     """
     prompt = f"""
@@ -164,14 +185,20 @@ def translate_segment(client, audio_path: str, segment_index: int, offset_second
     """
 
     last_err = None
-    for attempt in range(len(RETRY_DELAYS) + 1):
+    n = len(RETRY_DELAYS)
+    for attempt in range(n + 1):
         try:
             return _call_gemini(client, audio_path, prompt, offset_seconds, on_log)
         except Exception as e:
             last_err = e
-            if attempt >= len(RETRY_DELAYS) or not _is_retryable(e):
+            safe = _safe_err(e)   # 只有型別 + status code，永不含金鑰
+            if attempt >= n or not _is_retryable(e):
+                if on_error:
+                    on_error(f"第{segment_index + 1}段 上傳Gemini -> {safe} | 重試 {attempt}/{n} 後失敗")
                 raise
             delay = RETRY_DELAYS[attempt]
+            if on_error:
+                on_error(f"第{segment_index + 1}段 上傳Gemini -> {safe} | 重試 {attempt + 1}/{n}")
             if on_retry:
                 on_retry(attempt + 1, delay)
             time.sleep(delay)
@@ -185,11 +212,11 @@ def _call_gemini(client, audio_path: str, prompt: str, offset_seconds: float, on
         audio_file = client.files.get(name=audio_file.name)
 
     if on_log:
-        on_log("AI 已就緒，開始翻譯 (gemini-flash-latest)...")
+        on_log(f"AI 已就緒，開始翻譯 ({MODEL_NAME})...")
 
     try:
         response = client.models.generate_content(
-            model="gemini-flash-latest",
+            model=MODEL_NAME,
             contents=[prompt, audio_file],
             config=types.GenerateContentConfig(response_mime_type="application/json")
         )
