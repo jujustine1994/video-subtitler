@@ -22,6 +22,9 @@
 
 ## 更新記錄
 
+### 2026-07-17
+- **文件修正**: README.md 規則檔宣告改成純文字格式（`規則檔: windows-tool.md`），位置移到 CTH banner 之後，與其他專案一致，避免自動化 grep 漏掃
+
 ### 2026-06-22
 - **架構**: main.py 終端機互動式改為 Tkinter GUI（`src/gui.py` + `src/translator.py`），依 `windows-tool/tkinter-ui` 模板庫骨架建置
 - **新增**: Gemini API 呼叫段落級 retry 機制（429/timeout/連線錯誤才重試，指數後退，3 次後標記該段失敗不中斷流程）
