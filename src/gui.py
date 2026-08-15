@@ -271,10 +271,11 @@ class SubtitlerApp:
     # ---- 主題 ----
 
     def _apply_theme(self, theme_key: str):
-        t = THEMES.get(theme_key, THEMES["light"])
+        # 變數名不可叫 t——會遮蔽 i18n.t()，同 scope 的 t("gui.x") 會靜默改成對 dict 取值
+        theme = THEMES.get(theme_key, THEMES["light"])
         try:
             import sv_ttk
-            sv_ttk.set_theme(t["sv"])
+            sv_ttk.set_theme(theme["sv"])
         except ImportError:
             pass
 
@@ -284,18 +285,19 @@ class SubtitlerApp:
 
         style = ttk.Style()
         font = ("Microsoft JhengHei", 12)
-        label_fg = t["label_fg"]
+        label_fg = theme["label_fg"]
 
         style.configure("TButton", font=font)
         style.configure("TEntry", font=font)
-        style.configure("TLabelframe.Label", font=font, foreground=t["frame_title"])
+        style.configure("TLabelframe.Label", font=font, foreground=theme["frame_title"])
         for w in ("TLabel", "TCheckbutton", "TRadiobutton"):
             kw = {"font": font}
             if label_fg:
                 kw["foreground"] = label_fg
             style.configure(w, **kw)
 
-        self.log_text.config(bg=t["log_bg"], fg=t["log_fg"], insertbackground=t["log_fg"])
+        self.log_text.config(bg=theme["log_bg"], fg=theme["log_fg"],
+                             insertbackground=theme["log_fg"])
         self._current_theme = theme_key
 
     # ---- 設定視窗（僅外觀） ----
@@ -399,8 +401,8 @@ class SubtitlerApp:
         self._segments = {}
         self._segment_offsets = {}
 
-        t = threading.Thread(target=self._worker_full_run, daemon=True)
-        t.start()
+        worker = threading.Thread(target=self._worker_full_run, daemon=True)
+        worker.start()
 
     def _worker_full_run(self):
         self._task_start = time.time()
@@ -503,8 +505,8 @@ class SubtitlerApp:
         self._set_status("重試中，請稍候...", "info")
         self._log(f"\n重試第 {', '.join(str(i + 1) for i in selected)} 段...", to_file=False)
 
-        t = threading.Thread(target=self._worker_retry, args=(selected,), daemon=True)
-        t.start()
+        worker = threading.Thread(target=self._worker_retry, args=(selected,), daemon=True)
+        worker.start()
 
     def _worker_retry(self, selected):
         self._task_start = time.time()
