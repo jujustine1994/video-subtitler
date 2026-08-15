@@ -1,5 +1,6 @@
 # TODO 清單
 
+- [ ] 校正專案 MD（依新模板：ARCHITECTURE 補現狀，CHANGELOG 拿掉現狀段）
 - [x] 檢查系統是否已安裝 FFmpeg & ffprobe
 - [x] 建立 Python 虛擬環境與安裝套件
 - [x] 撰寫穩定版擷取音訊腳本 (FFmpeg 直接調用)
