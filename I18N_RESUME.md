@@ -14,11 +14,11 @@
 
 ## 現在停在哪
 
-**批次 5 完成（四語各 53 條，key 集合與 placeholder 已驗一致）。**
+**批次 6 完成：`tests/` 從零建起，95 條全綠（連跑 6 次無 flake）。**
 
-**下一步：批次 6 — 從零建 `tests/`**（conftest 的 session 級 tk_root、三道防退化、
-`test_nothing_shadows_the_translation_function`、GUI smoke 四語、首次啟動視窗、
-輸出基準四語比對、★ 切介面語言不影響字幕語言）。之後才是收尾文件。
+**下一步：收尾文件**（README / docs/ARCHITECTURE / docs/CHANGELOG / docs/TODO），
+以及負向驗證（故意塞中文常數 / 刪語言檔一個 key / 塞一個叫 `t` 的區域變數，
+確認測試會紅再還原）。最後把本檔改寫成完成紀錄。
 
 ## 已完成的 commit
 
@@ -36,6 +36,7 @@
 | `f108763` | 批次 2-2：translator/gui 接上 logtext 與 prompts，`_log` 改 fail-closed |
 | `75c1773` | 批次 3：gui.py 43 處介面文字改走 `t()`，zh_tw 母表 |
 | `a5f1cae` | 批次 4：translator.py 錯誤與進度訊息改走 `t()`（全專案 CJK 歸零） |
+| `e86f04b` | 批次 5：简中／英文／日文譯文（各 53 條） |
 
 **分支未合併、未 push。**
 
