@@ -4,9 +4,10 @@ Gemini 影片字幕翻譯工具 — tkinter GUI
 """
 
 import ctypes
-import json
 import os
 import queue
+import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
@@ -14,7 +15,9 @@ from tkinter import ttk, messagebox, scrolledtext, filedialog
 
 from dotenv import load_dotenv, set_key
 
-from . import translator
+from . import i18n, translator
+from .config import load_config, save_config
+from .i18n import t
 
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(SCRIPT_DIR, ".tool_config.json")
@@ -122,13 +125,18 @@ def show_cth_banner():
 class SubtitlerApp:
     def __init__(self, root: tk.Tk):
         self.root = root
+        # ⚠ 語言必須在建任何 widget 之前設好——t() 是建置時查一次表，
+        # 設晚了介面會停在預設語言。
+        self.cfg = self._load_config()
+        i18n.set_lang(self.cfg.get("language"))
+
         self.root.title("Gemini 影片字幕翻譯工具")
         self.root.geometry("560x680")
         self.root.resizable(True, True)
 
         self.msg_queue: queue.Queue = queue.Queue()
         self.is_running = False
-        self._current_theme = self._load_config().get("theme", "light")
+        self._current_theme = self.cfg.get("theme", "light")
 
         # 補跑所需的執行期狀態
         self._video_path = ""
@@ -307,6 +315,9 @@ class SubtitlerApp:
         win.title("設定")
         win.resizable(False, False)
         win.grab_set()
+        self.settings_win = win
+
+        self._build_language_row(win)
 
         frame = ttk.Frame(win, padding=16)
         frame.pack()
@@ -320,31 +331,95 @@ class SubtitlerApp:
 
         def _apply():
             self._apply_theme(theme_var.get())
-            self._save_config({"theme": theme_var.get()})
+            new_lang = self._selected_lang_code()
+            lang_changed = new_lang != self._lang_saved_code
+            # theme 的值是機器碼（light/dark/financial），language 是語言代號，
+            # 兩者都不是畫面上顯示的字——顯示名走 i18n，存檔值永遠固定。
+            self._save_config({"theme": theme_var.get(), "language": new_lang})
             win.destroy()
+            # 只有語言真的變更才打擾使用者——改主題不該跳重啟視窗
+            if lang_changed:
+                self._prompt_restart_for_language()
 
         btn_row = ttk.Frame(win)
         btn_row.pack(pady=(0, 16))
         ttk.Button(btn_row, text="套用", command=_apply, width=10).pack(side="left", padx=4, ipady=4)
         ttk.Button(btn_row, text="取消", command=win.destroy, width=10).pack(side="left", padx=4, ipady=4)
 
+    # ---- 語言 ----
+
+    def _build_language_row(self, popup):
+        """設定視窗最上方的語言列。選項由 i18n.LANGUAGES 動態生成，
+        新增語言時這裡一個字都不必改。
+
+        標籤固定英文 "Language:"、選項用各語言自稱——任何語言下都認得出來。
+        """
+        lang_frame = ttk.Frame(popup)
+        lang_frame.pack(anchor="w", padx=16, pady=(14, 0))
+        ttk.Label(lang_frame, text="Language:").pack(side="left", padx=(0, 8))
+
+        self._lang_choices = i18n.available_languages()
+        # ⚠ 讀 config 不讀 i18n.get_lang()：set_lang() 只在 __init__ 跑一次，
+        # 使用者選了新語言但按「稍後」不重啟時，runtime 語言還是舊的。用 runtime
+        # 值當基準的話，下次開設定按套用會把他的選擇默默寫回去。
+        saved = self.cfg.get("language", "")
+        self._lang_saved_code = saved if i18n.is_supported(saved) else i18n.DEFAULT_LANG
+        names = [name for _, name in self._lang_choices]
+        current = next((n for c, n in self._lang_choices if c == self._lang_saved_code),
+                       names[0])
+        self.settings_lang_var = tk.StringVar(value=current)
+        self.settings_lang_combo = ttk.Combobox(
+            lang_frame, textvariable=self.settings_lang_var,
+            values=names, width=14, state="readonly",
+        )
+        self.settings_lang_combo.pack(side="left")
+
+    def _selected_lang_code(self) -> str:
+        """把下拉選單顯示的名稱換回代號。取不到就維持原設定，不亂改。"""
+        chosen = self.settings_lang_var.get()
+        for code, name in self._lang_choices:
+            if name == chosen:
+                return code
+        return self._lang_saved_code
+
+    def _prompt_restart_for_language(self):
+        """語言變更後問是否重啟。
+
+        視窗全英文：此刻介面還是舊語言、使用者要的是新語言，用任一方都尷尬，
+        英文最中立。**重開才生效，不做即時切換**（規則見 windows-tool.md）。
+        """
+        if messagebox.askyesno(
+            "Language Changed",
+            "Restart the app to apply the new language.\n\nRestart now?",
+        ):
+            self._restart_app()
+
+    def _restart_app(self):
+        """起一個新行程再關掉自己。
+
+        不用 os.execv：Windows 上它會就地覆寫當前行程，tkinter 還沒釋放的視窗
+        handle 可能殘留，看起來像關不掉的殭屍視窗。
+        """
+        try:
+            subprocess.Popen([sys.executable, *sys.argv], close_fds=True)
+        except OSError:
+            # 起不了新行程就什麼都不做——使用者下次自己開一樣會生效，
+            # 這裡把舊視窗關掉反而讓人以為程式壞了
+            return
+        self.root.destroy()
+
     # ---- 設定檔 ----
 
     def _load_config(self) -> dict:
-        try:
-            with open(CONFIG_PATH, encoding="utf-8") as f:
-                return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
+        """讀設定。實作在 config.py——首次啟動的語言視窗在 App 建立**之前**就要
+        讀寫設定，所以讀寫邏輯必須住在模組層級而不是這個類別裡。"""
+        return load_config(CONFIG_PATH)
 
     def _save_config(self, data: dict):
-        try:
-            cfg = self._load_config()
-            cfg.update(data)
-            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        cfg = self._load_config()
+        cfg.update(data)
+        self.cfg = cfg
+        save_config(cfg, CONFIG_PATH)
 
     # ---- API Key ----
 
@@ -599,12 +674,61 @@ class SubtitlerApp:
         self.frame_retry.grid(row=4, column=0, sticky="ew", padx=14, pady=(0, 6))
 
 
+def _pick_language_on_first_run(root) -> None:
+    """首次啟動時問一次語言，選完寫進設定檔，之後不再出現。
+
+    視窗刻意**不翻譯**：這時候還不知道使用者要哪個語言，用任一種當說明都
+    在賭。只有一個英文抬頭，其餘全是各語言的自稱，看得懂哪個就點哪個。
+
+    直接關掉視窗＝接受第一個選項並**照樣存檔**——需求是「選完就記住不要再
+    跳」，關掉還一直跳才是煩人。選錯了在設定視窗隨時能改。
+    """
+    cfg = load_config(CONFIG_PATH)
+    if i18n.is_supported(cfg.get("language", "")):
+        return                      # 選過了，直接進主畫面（不建任何 widget）
+
+    choices = i18n.available_languages()
+    chosen = {"code": choices[0][0]}
+
+    dlg = tk.Toplevel(root)
+    dlg.title("Language")
+    dlg.resizable(False, False)
+    dlg.attributes("-topmost", True)
+
+    ttk.Label(dlg, text="Select your language",
+              font=("", 12, "bold")).pack(padx=28, pady=(20, 4))
+    ttk.Label(dlg, text="You can change this later in Settings.",
+              foreground="#555555").pack(padx=28, pady=(0, 14))
+
+    def _choose(code: str) -> None:
+        chosen["code"] = code
+        dlg.destroy()
+
+    for code, name in choices:
+        ttk.Button(dlg, text=name, width=20,
+                   command=lambda c=code: _choose(c)).pack(padx=28, pady=3)
+    ttk.Frame(dlg, height=10).pack()
+
+    dlg.update_idletasks()
+    x = root.winfo_rootx() + (root.winfo_width() - dlg.winfo_width()) // 2
+    y = root.winfo_rooty() + (root.winfo_height() - dlg.winfo_height()) // 3
+    dlg.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+
+    dlg.grab_set()
+    dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)   # 關掉＝用預設值，照樣存
+    root.wait_window(dlg)
+
+    cfg["language"] = chosen["code"]
+    save_config(cfg, CONFIG_PATH)
+
+
 def main():
     show_cth_banner()
     root = tk.Tk()
     root.attributes("-topmost", True)
     root.update()
     root.attributes("-topmost", False)
+    _pick_language_on_first_run(root)
     SubtitlerApp(root)
     root.mainloop()
 
