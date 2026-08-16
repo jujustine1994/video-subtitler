@@ -18,8 +18,15 @@
 | `啟動翻譯.bat` | 入口點，薄 BAT（3 行），呼叫 launcher.ps1 |
 | `launcher.ps1` | 啟動邏輯：檢查 Python / FFmpeg / uv / venv，首次安裝說明，啟動 main.py（黑框保留在背後供除錯）；需含 UTF-8 BOM |
 | `main.py` | 極簡入口：`from src import gui; gui.main()` |
-| `src/gui.py` | Tkinter UI：主畫面、主題、queue 輪詢、失敗段補跑邏輯 |
+| `src/gui.py` | Tkinter UI：主畫面、主題、queue 輪詢、失敗段補跑邏輯、首次啟動選語言 |
 | `src/translator.py` | 純邏輯：ffmpeg 擷取、Gemini 呼叫（含 retry）、SRT 格式處理函式，不含 print/input |
+| `src/i18n.py` | 介面文字查表核心（`t()`、`LANGUAGES`、`set_lang()`） |
+| `src/locales/*.py` | 四個語言檔（`zh_tw` 母表 / `zh_cn` / `en` / `ja`），各 53 條，只匯出 `STRINGS` |
+| `src/config.py` | 讀寫 `.tool_config.json`（`language` / `theme`），缺的 key 補預設值 |
+| `src/logtext.py` | `logs/app.log` 的訊息字串，**固定繁中**不跟介面語言走 |
+| `src/prompts.py` | 送給 Gemini 的 prompt 與**字幕語言**——資料，永不翻譯 |
+| `tests/` | pytest 測試（95 條），含四道 i18n 防退化測試 |
+| `requirements_test.txt` | 測試套件清單（`pytest`） |
 | `requirements.txt` | `google-genai`、`python-dotenv==1.2.2` |
 | `.env` | 儲存 `GEMINI_API_KEY`（gitignore，GUI 執行時自動建立/更新） |
 | `.env.example` | API Key 範本，供使用者參考 |
@@ -86,6 +93,8 @@
 | `max_seconds` | `enforce_max_duration()` | 字幕最長顯示秒數，預設 `5` 秒 |
 | Gemini 模型 | `translator._call_gemini()` | `gemini-flash-latest` |
 | GUI 主題 | `.tool_config.json` | `light` / `dark` / `financial`，由設定視窗寫入 |
+| 介面語言 | `.tool_config.json` | `language` 欄位：`zh_tw` / `zh_cn` / `en` / `ja`。**預設空字串**＝還沒選過，首次啟動會問 |
+| 字幕語言 | `src/prompts.py` | `DEFAULT_TARGET_LANGUAGE`，目前固定繁體中文。**與介面語言無關** |
 
 ---
 
@@ -98,5 +107,25 @@
 **google-genai SDK（新版）**：使用 `genai.Client` 初始化，`client.files.upload/get/delete`、`client.models.generate_content`。舊版 `google-generativeai` 已棄用，不可混用。
 
 **SRT 雙重保險**：Gemini 回傳 JSON（`srt_content` 欄位），若解析失敗則直接對原始文字跑 `fix_srt_format()`。合併後再跑 `enforce_max_duration()` + `renumber_srt()`，確保格式正確。
+
+**多語言（i18n）**：介面文字全部走 `i18n.t("key")`，語言檔在 `src/locales/`。
+啟動時 `SubtitlerApp.__init__` 先 `set_lang()` 再建 widget——`t()` 是建置時查一次表，
+設晚了介面會停在預設語言。**重開才生效，刻意不做即時切換**（即時切換要建 widget
+登記表逐一 `config(text=...)`，漏一個就是中英混雜，改動幅度大好幾倍）。
+語言選單在設定視窗最上方一列，標籤固定英文 `Language:`、選項用各語言自稱。
+首次啟動的選語言視窗全英文——那時還不知道使用者要哪個語言，用任一種當說明都在賭。
+
+**★ 字幕語言 ≠ 介面語言（本工具最容易搞混的一條）**：
+字幕的內容跟著**影片音訊**走，不跟介面語言走。切介面語言不會、也不該改變辨識輸出。
+所以送給 Gemini 的 prompt 與 `DEFAULT_TARGET_LANGUAGE` 住在 `src/prompts.py`，
+是**資料**不是介面文字，永不進語言檔。同樣是資料的還有：SRT 格式規格
+（`-->`、`HH:MM:SS,mmm`）、輸出檔名 `<影片檔名>.srt`、暫存檔名 `temp_seg_<n>.mp3`、
+ffmpeg 參數、模型代號、`THEMES` 的鍵（存進設定檔的機器碼）。
+`tests/test_subtitle_language_is_data.py` 是這條規則的永久守門員。
+
+**log 固定繁中**：`logs/app.log` 的字串在 `src/logtext.py`，不跟介面語言走——
+log 是給維護者除錯用的，跟著使用者語言變等於自廢。同一條訊息要同時推 UI 又落檔時，
+用 `_log(ui_msg, level, log_msg=None)` 一個呼叫吃兩邊：UI 那條走 `t()`、落檔那條走
+`LOG_TEXT`。**`log_msg` 預設 None＝不落檔（fail-closed）**，要落檔就得明講。
 
 **段落級容錯**：單段失敗不影響整體輸出，跑完即合併現有成功段；GUI 提供失敗段勾選補跑，避免長影片因單段問題整部重跑。
