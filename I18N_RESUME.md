@@ -14,16 +14,8 @@
 
 ## 現在停在哪
 
-**批次 2 進行中。** `src/logtext.py` 與 `src/prompts.py` 已寫好但**尚未接線、尚未 commit**
-（translator.py / gui.py 還在用自己的字面）。
-
-下一步（照順序）：
-
-1. `src/translator.py`：`translate_segment` 改用 `prompts.TRANSLATE_PROMPT.format(...)`
-   與 `prompts.DEFAULT_TARGET_LANGUAGE`；`on_error` 改成 `on_error(ui_msg, log_msg)`
-   兩個參數（UI 走 `t()`、落檔走 `LOG_TEXT`，一個呼叫吃兩邊）→ commit
-2. `src/gui.py`：`_log(ui_msg, level="INFO", log_msg=None)`（fail-closed，不給 log_msg 就不落檔）；
-   三處 `_write_log_header` / `_write_log` 改用 `LOG_TEXT` → commit
+**批次 2 完成，下一步是批次 3（`src/gui.py` 的 74 條 GUI 文字改走 `t()`，同時把譯文寫進
+`locales/zh_tw.py`）。** 批次 3 只動 `gui.py` 一個檔，做完就 commit。
 
 ## 已完成的 commit
 
@@ -37,6 +29,7 @@
 | `e73b726` | 本檔初版 |
 | `fa883e3` | docs: TODO 補多語言待辦與兩項既有問題 |
 | `1ff2989` | 批次 1 後半：`src/config.py`、`src/locales/`（四個空表）、首次啟動選語言、設定視窗語言列、重啟提示 |
+| `80fe88b` | 批次 2-1：`logtext.py` + `prompts.py`（純常數，未接線） |
 
 **分支未合併、未 push。**
 

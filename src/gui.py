@@ -18,6 +18,7 @@ from dotenv import load_dotenv, set_key
 from . import i18n, translator
 from .config import load_config, save_config
 from .i18n import t
+from .logtext import LOG_TEXT
 
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(SCRIPT_DIR, ".tool_config.json")
@@ -483,7 +484,7 @@ class SubtitlerApp:
         self._task_start = time.time()
         try:
             duration = translator.get_video_duration(self._video_path)
-            self._log(f"影片總時長: {int(duration // 60)} 分 {int(duration % 60)} 秒", to_file=False)
+            self._log(f"影片總時長: {int(duration // 60)} 分 {int(duration % 60)} 秒")
 
             num_segments = int(duration // translator.CHUNK_DURATION) + 1
             indices = []
@@ -495,15 +496,16 @@ class SubtitlerApp:
                 self._segment_offsets[i] = start_time
 
             # ---- 任務起始：一行，關鍵設定（模型、段數）塞同一行 ----
-            _write_log_header(
-                f"轉錄 {os.path.basename(self._video_path)} | {translator.MODEL_NAME} | {len(indices)}段"
-            )
-            self._log(f"共 {len(indices)} 段，開始處理...", to_file=False)
+            _write_log_header(LOG_TEXT["task_start_full"].format(
+                name=os.path.basename(self._video_path),
+                model=translator.MODEL_NAME, count=len(indices),
+            ))
+            self._log(f"共 {len(indices)} 段，開始處理...")
             self._run_segments(indices, len(indices))
             self._finish_run()
         except Exception as e:
             # UI 可見完整錯誤（ephemeral）；落檔只記型別，絕不寫 str(e)（可能挾帶金鑰 URL）
-            self._log(f"\n[ERROR] {type(e).__name__}", "FAIL", to_file=False)
+            self._log(f"\n[ERROR] {type(e).__name__}", "FAIL")
             self._log_task_result(ok=False)
             self._fatal(str(e))
 
@@ -511,7 +513,7 @@ class SubtitlerApp:
         done_count = 0
         for i in indices:
             start_time = self._segment_offsets[i]
-            self._log(f"\n-> 正在處理第 {i + 1} 段 (起始時間: {int(start_time // 60)} 分)...", to_file=False)
+            self._log(f"\n-> 正在處理第 {i + 1} 段 (起始時間: {int(start_time // 60)} 分)...")
             temp_audio = os.path.join(SCRIPT_DIR, f"temp_seg_{i}.mp3")
             try:
                 translator.extract_audio_segment(
@@ -520,19 +522,21 @@ class SubtitlerApp:
                 srt_seg = translator.translate_segment(
                     self._client, temp_audio, i, start_time,
                     # 一般進度訊息只推 UI，不落檔
-                    on_log=lambda m: self._log(m, to_file=False),
+                    on_log=lambda m: self._log(m),
                     on_retry=lambda attempt, delay, idx=i: self._log(
-                        f"   第 {idx + 1} 段失敗，{delay} 秒後重試（第 {attempt} 次）...", to_file=False
+                        f"   第 {idx + 1} 段失敗，{delay} 秒後重試（第 {attempt} 次）..."
                     ),
-                    # 已消毒的錯誤摘要（型別 + status code + 重試次數），落檔為 ERROR 行
-                    on_error=lambda safe_msg: self._log(safe_msg, "ERROR"),
+                    # 已消毒的錯誤摘要（型別 + status code + 重試次數）：
+                    # ui_msg 推畫面、log_msg 落檔為 ERROR 行（固定繁中）
+                    on_error=lambda ui_msg, log_msg: self._log(
+                        ui_msg, "ERROR", log_msg=log_msg),
                 )
                 self._segments[i] = srt_seg
-                self._log(f"   第 {i + 1} 段完成。", to_file=False)
+                self._log(f"   第 {i + 1} 段完成。")
             except Exception as e:
                 self._segments[i] = None
                 # ERROR 行已由 translator 的 on_error 落檔（含 status code）；此處只推 UI，不寫 str(e)
-                self._log(f"   第 {i + 1} 段重試後仍失敗（{type(e).__name__}）", to_file=False)
+                self._log(f"   第 {i + 1} 段重試後仍失敗（{type(e).__name__}）")
             finally:
                 if os.path.exists(temp_audio):
                     os.remove(temp_audio)
@@ -543,7 +547,7 @@ class SubtitlerApp:
         self._merge_and_write()
         failed = sorted(i for i, v in self._segments.items() if v is None)
         if failed:
-            self._log(f"\n以下段落失敗：第 {', '.join(str(i + 1) for i in failed)} 段", to_file=False)
+            self._log(f"\n以下段落失敗：第 {', '.join(str(i + 1) for i in failed)} 段")
             self._set_status(f"完成，但有 {len(failed)} 段失敗", "error")
         else:
             self._set_status("已完成！", "success")
@@ -554,7 +558,8 @@ class SubtitlerApp:
     def _log_task_result(self, ok: bool):
         elapsed = int(time.time() - getattr(self, "_task_start", time.time()))
         _write_log(
-            f"{'成功' if ok else '失敗'}，耗時 {elapsed // 60}分{elapsed % 60}秒",
+            LOG_TEXT["task_ok" if ok else "task_fail"].format(
+                minutes=elapsed // 60, seconds=elapsed % 60),
             "OK" if ok else "FAIL",
         )
 
@@ -564,7 +569,7 @@ class SubtitlerApp:
         self._output_path = os.path.splitext(self._video_path)[0] + ".srt"
         with open(self._output_path, "w", encoding="utf-8") as f:
             f.write(merged)
-        self._log(f"\n字幕已輸出: {self._output_path}", to_file=False)
+        self._log(f"\n字幕已輸出: {self._output_path}")
 
     # ---- 失敗段補跑 ----
 
@@ -578,7 +583,7 @@ class SubtitlerApp:
         self.is_running = True
         self.btn_start.config(state="disabled")
         self._set_status("重試中，請稍候...", "info")
-        self._log(f"\n重試第 {', '.join(str(i + 1) for i in selected)} 段...", to_file=False)
+        self._log(f"\n重試第 {', '.join(str(i + 1) for i in selected)} 段...")
 
         worker = threading.Thread(target=self._worker_retry, args=(selected,), daemon=True)
         worker.start()
@@ -586,26 +591,33 @@ class SubtitlerApp:
     def _worker_retry(self, selected):
         self._task_start = time.time()
         # ---- 任務起始：補跑，關鍵設定塞同一行 ----
-        _write_log_header(
-            f"補跑 {os.path.basename(self._video_path)} | {translator.MODEL_NAME} | {len(selected)}段"
-        )
+        _write_log_header(LOG_TEXT["task_start_retry"].format(
+            name=os.path.basename(self._video_path),
+            model=translator.MODEL_NAME, count=len(selected),
+        ))
         try:
             self._run_segments(selected, len(selected))
             self._finish_run()
         except Exception as e:
-            self._log(f"\n[ERROR] {type(e).__name__}", "FAIL", to_file=False)
+            self._log(f"\n[ERROR] {type(e).__name__}", "FAIL")
             self._log_task_result(ok=False)
             self._fatal(str(e))
 
     # ---- 執行緒安全 UI 更新 ----
 
-    def _log(self, msg: str, level: str = "INFO", to_file: bool = True):
-        """一個呼叫同時（可選）寫檔 + 推 UI queue，避免維護兩套呼叫而漏記。
-        進度訊息（上傳中、切割完成）傳 to_file=False，只推 UI；
-        落檔的只有：任務起始（header 另走 _write_log_header）、錯誤、任務結果。"""
-        if to_file:
-            _write_log(msg, level)
-        self.msg_queue.put(("log", msg))
+    def _log(self, ui_msg: str, level: str = "INFO", log_msg: str | None = None):
+        """一個呼叫同時推 UI queue +（可選）寫檔，避免維護兩套呼叫而漏記。
+
+        ui_msg 走 i18n（跟著介面語言）、log_msg 走 logtext（**固定繁中**）——
+        log 是給維護者除錯用的，跟著使用者語言變等於自廢。
+
+        **預設不落檔（fail-closed）**：要落檔就明確給 log_msg。進度訊息
+        （上傳中、切割完成）對 debug 沒用，只推 UI；落檔的只有任務起始
+        （另走 _write_log_header）、錯誤、任務結果三種。
+        """
+        if log_msg is not None:
+            _write_log(log_msg, level)
+        self.msg_queue.put(("log", ui_msg))
 
     def _set_progress(self, current, total, label):
         self.msg_queue.put(("progress", (current, total, label)))
