@@ -1,103 +1,52 @@
-# I18N_RESUME — 多語言遷移進度（feat/i18n 分支）
+# I18N — 多語言遷移完成紀錄（feat/i18n 分支）
 
-**每完成一個 commit 就更新本檔。**全部做完後改寫成完成紀錄。
+2026-08-16 完成。六個批次全數做完，95 條測試全綠。
+**本檔留作日後維護的參考**（決策理由與踩過的坑），不是待辦清單——待辦在 `docs/TODO.md`。
 
-參考資料（動手前依序讀完）：
-
-1. `C:\Users\CTH\Documents\Code\_i18n_migration\i18n_lessons.md`（前面專案踩出來的坑，最重要）
-2. `C:\Users\CTH\.claude\project-rules\windows-tool\tkinter-ui\pattern_i18n.py`（完整食譜）
-3. `C:\Users\CTH\.claude\project-rules\general.md`「資料與顯示文字必須分離」
-4. `C:\Users\CTH\.claude\project-rules\windows-tool.md`「多語言」「執行紀錄（log）」
-5. 參考實作（**唯讀**）：`C:\Users\CTH\Documents\Code\Video-Combiner` 的 `feat/i18n` 分支
+分支起點 `8e870b8`。**未合併回 main、未 push。**
 
 ---
 
-## 現在停在哪
-
-**批次 6 完成：`tests/` 從零建起，95 條全綠（連跑 6 次無 flake）。**
-
-**下一步：收尾文件**（README / docs/ARCHITECTURE / docs/CHANGELOG / docs/TODO），
-以及負向驗證（故意塞中文常數 / 刪語言檔一個 key / 塞一個叫 `t` 的區域變數，
-確認測試會紅再還原）。最後把本檔改寫成完成紀錄。
-
-## 已完成的 commit
-
-分支起點 `8e870b8`（main 最後一筆）。
+## commit 列表
 
 | hash | 內容 |
 |---|---|
-| `4e51871` | docs: TODO 補「校正專案 MD」（分支起點就有的既有改動，與 i18n 無關） |
+| `4e51871` | docs: TODO 補「校正專案 MD」（分支起點就有的既有改動，與 i18n 無關，先獨立保存） |
 | `dd41655` | 前置：消除三個會遮蔽 `i18n.t` 的區域變數（`theme` / `worker` × 2） |
 | `94d109a` | 批次 1 前半：`src/i18n.py` |
 | `e73b726` | 本檔初版 |
 | `fa883e3` | docs: TODO 補多語言待辦與兩項既有問題 |
-| `1ff2989` | 批次 1 後半：`src/config.py`、`src/locales/`（四個空表）、首次啟動選語言、設定視窗語言列、重啟提示 |
+| `1ff2989` | 批次 1 後半：`config.py`、`locales/`、首次啟動選語言、設定視窗語言列、重啟提示 |
 | `80fe88b` | 批次 2-1：`logtext.py` + `prompts.py`（純常數，未接線） |
 | `f108763` | 批次 2-2：translator/gui 接上 logtext 與 prompts，`_log` 改 fail-closed |
 | `75c1773` | 批次 3：gui.py 43 處介面文字改走 `t()`，zh_tw 母表 |
 | `a5f1cae` | 批次 4：translator.py 錯誤與進度訊息改走 `t()`（全專案 CJK 歸零） |
 | `e86f04b` | 批次 5：简中／英文／日文譯文（各 53 條） |
-
-**分支未合併、未 push。**
-
----
-
-## 剩下的批次
-
-### 批次 2（進行中）— log 字串抽 `logtext.py`、prompt 抽 `prompts.py`
-
-落檔字串共 5 條，已全部進 `LOG_TEXT`：
-`task_start_full` / `task_start_retry` / `task_ok` / `task_fail` /
-`segment_error` / `segment_error_final`。
-
-`_log()` 形狀照 lessons 第 13 條：`_log(ui_msg, level="INFO", log_msg=None)`，
-參數名統一用 `log_msg`，**預設不落檔**（fail-closed）。
-現況：gui 的呼叫幾乎都是 `to_file=False`，唯一同時推 UI 又落檔的是
-`_run_segments` 傳給 translator 的 `on_error`。
-
-### 批次 3 — GUI 介面文字（**一個檔一個 commit**）
-
-`src/gui.py` 74 條寫死中日文（f-string 碎片要**整句重組**成一條帶具名 placeholder 的 key）。
-⚠ `THEMES` 是模組層級常數表，`t()` 不可在 import 時求值 → `name` 欄改放 i18n key
-（lessons 12），**鍵 `light` / `dark` / `financial` 不可動**（存進 `.tool_config.json`）。
-
-### 批次 4 — 錯誤訊息
-
-`messagebox` 的標題與內文；`src/translator.py` 的
-`RuntimeError("ffmpeg 音訊擷取失敗…")`（會經 `_fatal()` 顯示給使用者 → 是介面文字）。
-
-### 批次 5 — 简中／英／日譯文
-
-### 批次 6 — 測試（本專案目前 **0 條測試**，`tests/` 從零建）
-
-pytest 9.1.1 已裝進 venv（`uv pip install pytest --python venv\Scripts\python.exe`；
-此 venv **沒有 pip**）。要寫 `requirements_test.txt`。
-
-- ALLOWLIST 只放 `i18n.py`（語言自稱）、`logtext.py`（log 母語言）、`prompts.py`（Gemini prompt）
-- 掃描範圍掃 ROOT 排除 `venv`/`tests`/`locales`/`__pycache__`/`docs`，`assert len(files) > 0`，
-  並釘住 `gui.py`、`translator.py` 在範圍內（lessons 4/5）
-- ✔ 本專案的 `SubtitlerApp(root)` **接受外部傳入的 root**（不是 `class App(tk.Tk)`），
-  所以 lessons 6-b 的子行程方案**用不到**，用 conftest 的 session 級 `tk_root` + `Toplevel` 即可
-- GUI smoke 要涵蓋 `ScrolledText`（`get("1.0","end")`）與 `Combobox.values`；本專案沒有 Treeview
-- 首次啟動視窗測試用 `after()` 排模擬點擊，不可用 `wait_window` 卡住
-- 門檻不要寫死絕對值（lessons 6-d）
-- **不要**寫「LOG_TEXT 的值不得出現在語言檔裡」（lessons 13 反向提醒，重疊是設計）
-- ★ 本專案特有：切介面語言後，字幕語言設定與送給 Gemini 的 prompt 完全不變
+| `cc3246b` | 批次 6：防退化測試從零建起（0 → 95 條） |
+| `08c18e1` | docs: README / ARCHITECTURE / CHANGELOG / TODO 補多語言說明 |
 
 ---
 
-## ★ 字幕語言設定怎麼處理（本專案最關鍵一項）
+## ★ 這個專案最關鍵的一條：字幕語言 ≠ 介面語言
 
-**現況：沒有 GUI 選項、沒有存進 config。**它是 `translate_segment()` 的預設參數，
-呼叫端從未傳值，實際上永遠是「繁體中文」。
+**字幕的內容跟著影片音訊走。**使用者把介面切成日文，辨識出來的字幕不會、也不該
+跟著變成日文——那等於換個介面配色就把辨識結果整個換掉。
 
-**決定：判成資料，不翻、不接介面語言。**已抽成 `src/prompts.py` 的
-`DEFAULT_TARGET_LANGUAGE` 與 `TRANSLATE_PROMPT`（純常數，列入 ALLOWLIST，字面逐字不變）。
-字幕跟著**影片音訊**走——使用者把介面切成日文，字幕不該變成日文。
+現況：字幕語言**沒有 GUI 選項、沒有存進設定檔**。它是 `translate_segment()` 的預設
+參數，呼叫端從未傳值，實際上永遠是繁體中文。
 
-**已知缺陷（刻意沒動，寫在 docs/TODO.md）**：它存的是中文字面「繁體中文」而不是機器碼。
-目前不落檔所以還沒污染，但日後做成可存設定時必須改存機器碼 + `_display()`/`_stored()`。
-**不要順手做成 GUI 選項**，那是邏輯變更。
+**處理方式**：連同整段 prompt 抽成 `src/prompts.py` 的 `DEFAULT_TARGET_LANGUAGE`
+與 `TRANSLATE_PROMPT`（純常數、列入測試 ALLOWLIST、字面逐字不變）。
+判成**資料**，永不進語言檔。`tests/test_subtitle_language_is_data.py` 是永久守門員：
+
+- 四語下送給 Gemini 的 prompt 逐字相同
+- 字幕語言那串字永遠不會出現在 `.tool_config.json`
+- 呼叫端沒有開始傳 `target_language`（一傳就得先處理「存機器碼」那件事）
+- prompt 與字幕語言沒進過任何語言檔
+
+**已知缺陷（刻意沒動，寫在 `docs/TODO.md`）**：它的值是中文字面「繁體中文」而不是
+機器碼。目前不落檔所以還沒污染，但日後做成可選設定時必須改存機器碼 +
+`_display()` / `_stored()`。**不要順手做成 GUI 選項**，那是邏輯變更。
 
 ---
 
@@ -114,55 +63,57 @@ pytest 9.1.1 已裝進 venv（`uv pip install pytest --python venv\Scripts\pytho
 | `RETRYABLE_MARKERS`（拿去比對 API 錯誤訊息） | `translator` |
 | `logs/app.log` 的內容 | `src/logtext.py` |
 
-灰色地帶：`THEMES` 的 `name` 欄是純顯示文字 → **要翻**（批次 3）；主題**鍵**不翻。
+`THEMES` 的 `name` 欄是純顯示文字 → **有翻**（改放 i18n key，顯示端才 `t()`）；
+主題**鍵**不翻。灰色地帶清單見 `docs/TODO.md`。
 
 ---
 
-## 驗收狀態
+## 驗收結果
 
-| # | 項目 | 狀態 |
+| # | 項目 | 結果 |
 |---|---|---|
-| 1 | 完整測試綠燈（原本 0 條） | 未做（批次 6） |
-| 2 | 四語各建置 GUI、殘留 key 0 | 未做 |
-| 3 | 輸出基準四語相同且與改前逐字一致 | **每個 commit 都在跑，目前全綠** |
-| 4 | 四語 key 集合 + placeholder 一致 | 未做 |
-| 5 | 首次啟動語言視窗 | 手動驗過「已選過就不跳」；自動化測試未做 |
-| 6 | ★ 切介面語言不影響字幕語言設定 | 未做（要寫成永久測試） |
+| 1 | 完整測試綠燈 | 0 → **95 條全綠**，連跑 6 次無 flake |
+| 2 | 四語各建置 GUI、殘留 key 0 | 四語各 32 條 widget 文字、殘留 key **0** |
+| 3 | 輸出基準四語相同且與改前逐字一致 | 檔名／目錄／字幕內容四語完全相同，且與 `8e870b8` 逐字相同 |
+| 4 | 四語 key 集合 + placeholder 一致 | 各 53 條，集合與 placeholder 完全一致 |
+| 5 | 首次啟動語言視窗 | 開得起來、點下去有存檔、第二次不跳、關掉也存、不洗掉既有主題 |
+| 6 | ★ 切介面語言不影響字幕語言 | 四語 prompt 逐字相同；已寫成永久測試 |
 
-輸出基準腳本在
-`C:\Users\CTH\AppData\Local\Temp\claude\C--Users-CTH--claude\11685c65-ace7-4e37-bd93-14b32e0e66c9\scratchpad\baseline.py`
-（臨時目錄，可能被清）。邏輯：mock 掉 ffmpeg/Gemini，設 `app._video_path` 與 `app._segments`
-後呼叫 `app._merge_and_write()`，記下輸出檔名、字幕檔完整內容、`translate_segment` 組出的 prompt。
-已知基準：`示範 影片 sample.mp4` → `示範 影片 sample.srt`（同目錄）。
+**額外驗證**：繁中 widget 文字對 `8e870b8` 逐字比對——既有 27 條全部相同，
+只多了新增語言列的 5 條（`Language:` + 四個語言自稱）。
 
----
+**負向驗證**（都確認會紅，再還原）：
 
-## 譯文待校對的術語
-
-| 繁中 | 備註 |
+| 破壞 | 抓到的測試 |
 |---|---|
-| 「段」／「第 N 段」 | 影片切成 30 分鐘一段，英文建議 `segment`，日文 `セグメント` |
-| 「補跑」 | 失敗段重跑，英文建議 `Retry failed segments` |
-| 「清爽白」「深色模式」「金融藍」 | 主題自訂稱呼，直譯 |
-| 「影片總時長」 | duration |
+| 在 gui.py 塞一條寫死中文 | `test_no_hardcoded_cjk[gui.py]` |
+| 從 ja.py 刪一個 key | `test_every_language_has_the_same_keys` |
+| 塞一個叫 `t` 的區域變數 | `test_nothing_shadows_the_translation_function` |
+| 把字幕語言綁上介面語言 | `test_prompt_is_byte_identical_in_every_ui_language` 等 3 條 |
+| 把 en.py 的 placeholder 打錯 | `test_placeholders_match_across_languages` |
 
 ---
 
-## 重掃寫死中日文的指令
+## 維護須知
 
-```python
-import ast, re
-from pathlib import Path
-CJK = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff]")
-skip = {"venv", "__pycache__", ".git", "docs", "tests", "locales"}
-for p in sorted(Path(".").rglob("*.py")):
-    if skip & set(p.parts):
-        continue
-    tree = ast.parse(p.read_text(encoding="utf-8"))
-    for n in ast.walk(tree):
-        if isinstance(n, ast.Constant) and isinstance(n.value, str) and CJK.search(n.value):
-            print(p, n.lineno, repr(n.value[:60]))
-```
+- **新增介面文字**：一定走 `t("key")`，並在**四個**語言檔都加。漏了會被
+  `test_every_language_has_the_same_keys` 當場抓到。
+- **新增落檔訊息**：字面放 `src/logtext.py`（固定繁中），呼叫
+  `_log(ui_msg, level, log_msg=...)`。`log_msg` 不給就不落檔（fail-closed）。
+- **不要在模組層級 `t()`**：語言是讀完設定檔才設的，會凍結在預設語言。
+  常數表就放 key（如 `THEMES` 的 `name`），顯示端才查。
+- **不要建名字叫 `t` 的變數／參數／函式**，有測試釘住。
+- **字型維持預設**：`i18n.ui_font()` 存在但**刻意不呼叫**——指定字型會改變繁中的
+  既有外觀。實測到日文豆腐時才只對 `ja` 套用。
+- 測試套件：`uv pip install -r requirements_test.txt --python venv\Scripts\python.exe`
+  （此 venv **沒有 pip**）。跑法：`venv\Scripts\python.exe -m pytest tests -q`。
 
-（docstring 要排除，做法見 pattern_i18n.py 第 7 段的 `_hardcoded_cjk`。）
-⚠ 搬字串一律 **AST 逐節點取代**，切字串**在 bytes 上做**（`col_offset` 是 UTF-8 位元組偏移）。
+---
+
+## 參考資料
+
+1. `C:\Users\CTH\Documents\Code\_i18n_migration\i18n_lessons.md`（前面專案踩出來的坑）
+2. `C:\Users\CTH\.claude\project-rules\windows-tool\tkinter-ui\pattern_i18n.py`（完整食譜）
+3. `C:\Users\CTH\.claude\project-rules\general.md`「資料與顯示文字必須分離」
+4. `C:\Users\CTH\.claude\project-rules\windows-tool.md`「多語言」「執行紀錄（log）」
+5. 參考實作：`C:\Users\CTH\Documents\Code\Video-Combiner` 的 `feat/i18n` 分支
