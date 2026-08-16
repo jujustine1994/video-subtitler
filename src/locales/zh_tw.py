@@ -82,4 +82,15 @@ STRINGS: dict[str, str] = {
     "gui.log.failed_list":      "\n以下段落失敗：第 {indices} 段",
     "gui.log.output":           "\n字幕已輸出: {path}",
     "gui.log.retry_start":      "\n重試第 {indices} 段...",
+    "gui.log.ai_ready":         "AI 已就緒，開始翻譯 ({model})...",
+
+    # ── 同時推 UI 又落檔的訊息 ─────────────────────────────────────
+    # ⚠ 這兩條與 logtext.py 的 segment_error / segment_error_final 字面相同，
+    #   那是**設計**：同一句話推 UI（跟著介面語言）又落檔（固定繁中），
+    #   繁中模式下兩邊本來就一樣。不要為了「去重複」把任何一邊刪掉。
+    "log.segment_error":        "第{index}段 上傳Gemini -> {detail} | 重試 {attempt}/{total}",
+    "log.segment_error_final":  "第{index}段 上傳Gemini -> {detail} | 重試 {attempt}/{total} 後失敗",
+
+    # ── 會顯示給使用者看的例外訊息 ─────────────────────────────────
+    "err.ffmpeg_failed":        "ffmpeg 音訊擷取失敗，請確認 FFmpeg 已安裝並加入系統環境變數（PATH）。",
 }

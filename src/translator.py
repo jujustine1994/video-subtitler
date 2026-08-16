@@ -11,6 +11,7 @@ from google import genai
 from google.genai import types
 
 from . import prompts
+from .i18n import t
 from .logtext import LOG_TEXT
 
 CHUNK_DURATION = 1800  # 每段處理長度（秒），30 分鐘
@@ -60,7 +61,8 @@ def extract_audio_segment(video_path: str, start_time: float, duration: float, o
     ]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if not os.path.exists(out_path):
-        raise RuntimeError("ffmpeg 音訊擷取失敗，請確認 FFmpeg 已安裝並加入系統環境變數（PATH）。")
+        # 這條會經 gui._fatal() 顯示給使用者看，是介面文字不是 log
+        raise RuntimeError(t("err.ffmpeg_failed"))
 
 
 def renumber_srt(srt_text: str) -> str:
@@ -202,12 +204,11 @@ def _report_error(on_error, key: str, index: int, detail: str, attempt: int, tot
     """同一條錯誤同時給 UI 與 log 檔：一個呼叫吃兩邊，不要維護兩套呼叫，
     否則一定會有地方漏記（windows-tool.md）。
 
-    log 那條固定繁中（LOG_TEXT）；UI 那條在批次 4 會改走 t()，現在先跟 log 同源，
-    繁中模式下兩者本來就一模一樣。
+    UI 那條走 t()（跟著介面語言），log 那條走 LOG_TEXT（固定繁中）。
+    ⚠ 繁中模式下兩者字面一模一樣是**正常的**——重疊是設計不是 bug。
     """
     fmt = dict(index=index, detail=detail, attempt=attempt, total=total)
-    text = LOG_TEXT[key].format(**fmt)
-    on_error(text, text)
+    on_error(t(f"log.{key}", **fmt), LOG_TEXT[key].format(**fmt))
 
 
 def _call_gemini(client, audio_path: str, prompt: str, offset_seconds: float, on_log) -> str:
@@ -217,7 +218,8 @@ def _call_gemini(client, audio_path: str, prompt: str, offset_seconds: float, on
         audio_file = client.files.get(name=audio_file.name)
 
     if on_log:
-        on_log(f"AI 已就緒，開始翻譯 ({MODEL_NAME})...")
+        # MODEL_NAME 是資料（餵給 API 的模型代號），只是原樣顯示在畫面上
+        on_log(t("gui.log.ai_ready", model=MODEL_NAME))
 
     try:
         response = client.models.generate_content(

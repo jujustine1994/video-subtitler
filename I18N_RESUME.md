@@ -14,10 +14,10 @@
 
 ## 現在停在哪
 
-**批次 3 完成（gui.py 的 CJK 已歸零）。下一步是批次 4：錯誤訊息。**
-剩 `src/translator.py` 的 `RuntimeError("ffmpeg 音訊擷取失敗…")` 與 `_report_error()` 裡
-UI 那條字串（目前跟 log 同源，要改走 `t("log.segment_error*")`），並把對應 key 加進
-`locales/zh_tw.py`。
+**批次 4 完成。gui.py / translator.py / config.py / main.py 的寫死中日文全部歸零**
+（只剩 ALLOWLIST 的三個檔：i18n.py 語言自稱、logtext.py log 母語言、prompts.py Gemini prompt）。
+
+**下一步：批次 5 — 简中／英／日譯文（各 59 條），從 `locales/zh_tw.py` 翻。**
 
 ## 已完成的 commit
 
@@ -33,6 +33,7 @@ UI 那條字串（目前跟 log 同源，要改走 `t("log.segment_error*")`）�
 | `1ff2989` | 批次 1 後半：`src/config.py`、`src/locales/`（四個空表）、首次啟動選語言、設定視窗語言列、重啟提示 |
 | `80fe88b` | 批次 2-1：`logtext.py` + `prompts.py`（純常數，未接線） |
 | `f108763` | 批次 2-2：translator/gui 接上 logtext 與 prompts，`_log` 改 fail-closed |
+| `75c1773` | 批次 3：gui.py 43 處介面文字改走 `t()`，zh_tw 母表 55 條 |
 
 **分支未合併、未 push。**
 
