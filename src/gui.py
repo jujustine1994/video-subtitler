@@ -76,9 +76,12 @@ try:
 except Exception:
     pass
 
+# ⚠ 鍵（light / dark / financial）是**存進 .tool_config.json 的機器碼**，永遠不可翻譯或改動。
+#   "name" 欄放的是 i18n key 不是顯示名——t() 不可在 import 時求值，會凍結在預設語言
+#   （lessons 12）。顯示端（_open_settings）才 t(info["name"])。
 THEMES = {
     "light": {
-        "name": "清爽白", "sv": "light",
+        "name": "theme.light", "sv": "light",
         "log_bg": "#F4F4F4", "log_fg": "#333333",
         "frame_title": "#1A6BAF", "label_fg": "",
         "btn_bg": "#0078D4", "btn_fg": "#FFFFFF",
@@ -87,7 +90,7 @@ THEMES = {
         "header_bg": "#E8F0FB", "header_fg": "#1A6BAF",
     },
     "dark": {
-        "name": "深色模式", "sv": "dark",
+        "name": "theme.dark", "sv": "dark",
         "log_bg": "#1A1A1A", "log_fg": "#C8C8C8",
         "frame_title": "#60AAFF", "label_fg": "",
         "btn_bg": "#3A7BD5", "btn_fg": "#FFFFFF",
@@ -96,7 +99,7 @@ THEMES = {
         "header_bg": "#2A3A4D", "header_fg": "#60AAFF",
     },
     "financial": {
-        "name": "金融藍", "sv": "light",
+        "name": "theme.financial", "sv": "light",
         "log_bg": "#F0F5FF", "log_fg": "#1B2B45",
         "frame_title": "#1B3A6B", "label_fg": "#1B3A6B",
         "btn_bg": "#1B3A6B", "btn_fg": "#F5C518",
@@ -131,7 +134,7 @@ class SubtitlerApp:
         self.cfg = self._load_config()
         i18n.set_lang(self.cfg.get("language"))
 
-        self.root.title("Gemini 影片字幕翻譯工具")
+        self.root.title(t("gui.win.title"))
         self.root.geometry("560x680")
         self.root.resizable(True, True)
 
@@ -159,7 +162,7 @@ class SubtitlerApp:
         pad = {"padx": 14, "pady": 6}
 
         # === 影片檔案 ===
-        frame_file = ttk.LabelFrame(self.root, text=" 影片檔案 ", padding=8)
+        frame_file = ttk.LabelFrame(self.root, text=t("gui.frame.file"), padding=8)
         frame_file.grid(row=0, column=0, sticky="ew", **pad)
         frame_file.columnconfigure(0, weight=1)
 
@@ -171,7 +174,7 @@ class SubtitlerApp:
         ttk.Entry(file_row, textvariable=self.file_var, state="readonly", width=46).grid(
             row=0, column=0, sticky="ew", padx=(0, 8)
         )
-        ttk.Button(file_row, text="選擇影片", command=self._pick_file, width=10).grid(
+        ttk.Button(file_row, text=t("gui.btn.pick_file"), command=self._pick_file, width=10).grid(
             row=0, column=1
         )
 
@@ -184,15 +187,15 @@ class SubtitlerApp:
         self.api_var = tk.StringVar()
         self.api_entry = ttk.Entry(api_row, textvariable=self.api_var, width=40, show="•")
         self.api_entry.pack(side="left", padx=(0, 8))
-        ttk.Button(api_row, text="顯示", width=5, command=self._toggle_api_show).pack(
+        ttk.Button(api_row, text=t("gui.btn.show_key"), width=5, command=self._toggle_api_show).pack(
             side="left", padx=(0, 8)
         )
         self.save_key_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(api_row, text="記住", variable=self.save_key_var).pack(side="left")
+        ttk.Checkbutton(api_row, text=t("gui.chk.remember_key"), variable=self.save_key_var).pack(side="left")
 
         tk.Label(
             frame_api,
-            text="🔒 API Key 僅儲存於本機 .env 檔，請勿將 Key 提供給他人。",
+            text=t("gui.lbl.api_notice"),
             foreground="gray", font=("Microsoft JhengHei", 11),
         ).pack(anchor="w", pady=(4, 0))
 
@@ -200,7 +203,7 @@ class SubtitlerApp:
         frame_btn = tk.Frame(self.root)
         frame_btn.grid(row=2, column=0, pady=8)
         self.btn_start = ttk.Button(
-            frame_btn, text="▶  開始翻譯", command=self._start, width=20
+            frame_btn, text=t("gui.btn.start"), command=self._start, width=20
         )
         self.btn_start.pack(side="left", ipady=6)
         ttk.Button(
@@ -208,12 +211,12 @@ class SubtitlerApp:
         ).pack(side="left", ipady=6, padx=(8, 0))
 
         # === 處理進度 ===
-        frame_progress = ttk.LabelFrame(self.root, text=" 處理進度 ", padding=8)
+        frame_progress = ttk.LabelFrame(self.root, text=t("gui.frame.progress"), padding=8)
         frame_progress.grid(row=3, column=0, sticky="nsew", padx=14, pady=(0, 6))
         frame_progress.columnconfigure(0, weight=1)
         frame_progress.rowconfigure(2, weight=1)
 
-        self.progress_label = ttk.Label(frame_progress, text="等待開始...")
+        self.progress_label = ttk.Label(frame_progress, text=t("gui.status.idle"))
         self.progress_label.grid(row=0, column=0, sticky="w")
         self.progress_bar = ttk.Progressbar(frame_progress, mode="determinate")
         self.progress_bar.grid(row=1, column=0, sticky="ew", pady=(4, 8))
@@ -224,7 +227,7 @@ class SubtitlerApp:
         self.log_text.grid(row=2, column=0, sticky="nsew")
 
         # === 失敗段補跑區（預設隱藏，勾選框列表可捲動，固定高度不撐大視窗） ===
-        self.frame_retry = ttk.LabelFrame(self.root, text=" 失敗段落 ", padding=8)
+        self.frame_retry = ttk.LabelFrame(self.root, text=t("gui.frame.retry"), padding=8)
         self.retry_label = ttk.Label(self.frame_retry, text="")
         self.retry_label.pack(anchor="w")
 
@@ -254,7 +257,7 @@ class SubtitlerApp:
         )
 
         self.btn_retry = ttk.Button(
-            self.frame_retry, text="重試所選段落", command=self._retry_selected
+            self.frame_retry, text=t("gui.btn.retry"), command=self._retry_selected
         )
         self.btn_retry.pack(anchor="w")
         # frame_retry 預設不 grid，有失敗段時才顯示
@@ -263,7 +266,7 @@ class SubtitlerApp:
         self.root.rowconfigure(3, weight=1)
 
         self.log_text.config(state="normal")
-        self.log_text.insert("1.0", "選擇影片並輸入 API Key 後按「開始翻譯」。\n")
+        self.log_text.insert("1.0", t("gui.log.hint"))
         self.log_text.config(state="disabled")
 
         self._build_status_bar()
@@ -272,7 +275,7 @@ class SubtitlerApp:
         sep = ttk.Separator(self.root, orient="horizontal")
         sep.grid(row=98, column=0, sticky="ew")
         self._status_bar = tk.Label(
-            self.root, text="就緒", anchor="w", padx=10, pady=4,
+            self.root, text=t("gui.status.ready"), anchor="w", padx=10, pady=4,
             font=("Microsoft JhengHei", 11), foreground="gray",
         )
         self._status_bar.grid(row=99, column=0, sticky="ew")
@@ -313,7 +316,7 @@ class SubtitlerApp:
 
     def _open_settings(self):
         win = tk.Toplevel(self.root)
-        win.title("設定")
+        win.title(t("gui.dlg.settings_title"))
         win.resizable(False, False)
         win.grab_set()
         self.settings_win = win
@@ -322,11 +325,11 @@ class SubtitlerApp:
 
         frame = ttk.Frame(win, padding=16)
         frame.pack()
-        ttk.Label(frame, text="配色主題").pack(anchor="w", pady=(0, 10))
+        ttk.Label(frame, text=t("gui.lbl.theme")).pack(anchor="w", pady=(0, 10))
 
         theme_var = tk.StringVar(value=self._current_theme)
         for key, info in THEMES.items():
-            ttk.Radiobutton(frame, text=info["name"], variable=theme_var, value=key).pack(
+            ttk.Radiobutton(frame, text=t(info["name"]), variable=theme_var, value=key).pack(
                 anchor="w", pady=4
             )
 
@@ -344,8 +347,8 @@ class SubtitlerApp:
 
         btn_row = ttk.Frame(win)
         btn_row.pack(pady=(0, 16))
-        ttk.Button(btn_row, text="套用", command=_apply, width=10).pack(side="left", padx=4, ipady=4)
-        ttk.Button(btn_row, text="取消", command=win.destroy, width=10).pack(side="left", padx=4, ipady=4)
+        ttk.Button(btn_row, text=t("gui.btn.apply"), command=_apply, width=10).pack(side="left", padx=4, ipady=4)
+        ttk.Button(btn_row, text=t("gui.btn.cancel"), command=win.destroy, width=10).pack(side="left", padx=4, ipady=4)
 
     # ---- 語言 ----
 
@@ -437,8 +440,10 @@ class SubtitlerApp:
 
     def _pick_file(self):
         path = filedialog.askopenfilename(
-            title="請選擇影片檔案",
-            filetypes=[("影片檔案", "*.mp4 *.mkv *.avi *.mov *.wmv"), ("所有檔案", "*.*")],
+            title=t("gui.dlg.pick_file_title"),
+            # 萬用字元樣式是資料，永遠不翻；只有前面的說明文字走 t()
+            filetypes=[(t("gui.filetype.video"), "*.mp4 *.mkv *.avi *.mov *.wmv"),
+                       (t("gui.filetype.all"), "*.*")],
         )
         if path:
             self.file_var.set(path)
@@ -448,12 +453,12 @@ class SubtitlerApp:
     def _start(self):
         video_path = self.file_var.get().strip()
         if not video_path or not os.path.isfile(video_path):
-            messagebox.showerror("錯誤", "請選擇有效的影片檔案")
+            messagebox.showerror(t("gui.dlg.error_title"), t("gui.msg.no_video"))
             return
 
         api_key = self.api_var.get().strip()
         if not api_key:
-            messagebox.showerror("錯誤", "請輸入 Gemini API Key")
+            messagebox.showerror(t("gui.dlg.error_title"), t("gui.msg.no_api_key"))
             return
         if self.save_key_var.get():
             set_key(ENV_PATH, "GEMINI_API_KEY", api_key)
@@ -467,10 +472,10 @@ class SubtitlerApp:
         self.log_text.delete("1.0", "end")
         self.log_text.config(state="disabled")
         self.progress_bar["value"] = 0
-        self.progress_label.config(text="準備中...")
+        self.progress_label.config(text=t("gui.status.preparing"))
         self.is_running = True
         self.btn_start.config(state="disabled")
-        self._set_status("執行中，請稍候...", "info")
+        self._set_status(t("gui.status.running"), "info")
 
         self._video_path = video_path
         self._client = translator.make_client(api_key)
@@ -484,7 +489,8 @@ class SubtitlerApp:
         self._task_start = time.time()
         try:
             duration = translator.get_video_duration(self._video_path)
-            self._log(f"影片總時長: {int(duration // 60)} 分 {int(duration % 60)} 秒")
+            self._log(t("gui.log.duration", minutes=int(duration // 60),
+                        seconds=int(duration % 60)))
 
             num_segments = int(duration // translator.CHUNK_DURATION) + 1
             indices = []
@@ -500,7 +506,7 @@ class SubtitlerApp:
                 name=os.path.basename(self._video_path),
                 model=translator.MODEL_NAME, count=len(indices),
             ))
-            self._log(f"共 {len(indices)} 段，開始處理...")
+            self._log(t("gui.log.total_segments", count=len(indices)))
             self._run_segments(indices, len(indices))
             self._finish_run()
         except Exception as e:
@@ -513,7 +519,8 @@ class SubtitlerApp:
         done_count = 0
         for i in indices:
             start_time = self._segment_offsets[i]
-            self._log(f"\n-> 正在處理第 {i + 1} 段 (起始時間: {int(start_time // 60)} 分)...")
+            self._log(t("gui.log.segment_start", index=i + 1,
+                        minutes=int(start_time // 60)))
             temp_audio = os.path.join(SCRIPT_DIR, f"temp_seg_{i}.mp3")
             try:
                 translator.extract_audio_segment(
@@ -524,7 +531,8 @@ class SubtitlerApp:
                     # 一般進度訊息只推 UI，不落檔
                     on_log=lambda m: self._log(m),
                     on_retry=lambda attempt, delay, idx=i: self._log(
-                        f"   第 {idx + 1} 段失敗，{delay} 秒後重試（第 {attempt} 次）..."
+                        t("gui.log.segment_retry", index=idx + 1, delay=delay,
+                          attempt=attempt)
                     ),
                     # 已消毒的錯誤摘要（型別 + status code + 重試次數）：
                     # ui_msg 推畫面、log_msg 落檔為 ERROR 行（固定繁中）
@@ -532,25 +540,29 @@ class SubtitlerApp:
                         ui_msg, "ERROR", log_msg=log_msg),
                 )
                 self._segments[i] = srt_seg
-                self._log(f"   第 {i + 1} 段完成。")
+                self._log(t("gui.log.segment_done", index=i + 1))
             except Exception as e:
                 self._segments[i] = None
                 # ERROR 行已由 translator 的 on_error 落檔（含 status code）；此處只推 UI，不寫 str(e)
-                self._log(f"   第 {i + 1} 段重試後仍失敗（{type(e).__name__}）")
+                self._log(t("gui.log.segment_failed", index=i + 1,
+                            error=type(e).__name__))
             finally:
                 if os.path.exists(temp_audio):
                     os.remove(temp_audio)
             done_count += 1
-            self._set_progress(done_count, total_for_progress, f"{done_count} / {total_for_progress} 段完成")
+            self._set_progress(done_count, total_for_progress,
+                               t("gui.progress.segments", done=done_count,
+                                 total=total_for_progress))
 
     def _finish_run(self):
         self._merge_and_write()
         failed = sorted(i for i, v in self._segments.items() if v is None)
         if failed:
-            self._log(f"\n以下段落失敗：第 {', '.join(str(i + 1) for i in failed)} 段")
-            self._set_status(f"完成，但有 {len(failed)} 段失敗", "error")
+            self._log(t("gui.log.failed_list",
+                        indices=", ".join(str(i + 1) for i in failed)))
+            self._set_status(t("gui.status.done_with_failures", count=len(failed)), "error")
         else:
-            self._set_status("已完成！", "success")
+            self._set_status(t("gui.status.done"), "success")
         # ---- 任務結束：成功/失敗 + 耗時 ----
         self._log_task_result(ok=not failed)
         self._done(self._output_path, failed)
@@ -569,21 +581,22 @@ class SubtitlerApp:
         self._output_path = os.path.splitext(self._video_path)[0] + ".srt"
         with open(self._output_path, "w", encoding="utf-8") as f:
             f.write(merged)
-        self._log(f"\n字幕已輸出: {self._output_path}")
+        self._log(t("gui.log.output", path=self._output_path))
 
     # ---- 失敗段補跑 ----
 
     def _retry_selected(self):
         selected = [i for i, var in self._failed_vars.items() if var.get()]
         if not selected:
-            messagebox.showinfo("提示", "請至少勾選一個失敗段落")
+            messagebox.showinfo(t("gui.dlg.info_title"), t("gui.msg.select_one_segment"))
             return
 
         self.btn_retry.config(state="disabled")
         self.is_running = True
         self.btn_start.config(state="disabled")
-        self._set_status("重試中，請稍候...", "info")
-        self._log(f"\n重試第 {', '.join(str(i + 1) for i in selected)} 段...")
+        self._set_status(t("gui.status.retrying"), "info")
+        self._log(t("gui.log.retry_start",
+                    indices=", ".join(str(i + 1) for i in selected)))
 
         worker = threading.Thread(target=self._worker_retry, args=(selected,), daemon=True)
         worker.start()
@@ -656,13 +669,14 @@ class SubtitlerApp:
                     self.btn_retry.config(state="normal")
                     self._show_failed_segments(failed_indices)
                     if not failed_indices:
-                        messagebox.showinfo("完成", f"已完成：\n{output_path}")
+                        messagebox.showinfo(t("gui.dlg.done_title"),
+                                            t("gui.msg.done", path=output_path))
                 elif msg_type == "fatal":
                     self.is_running = False
                     self.btn_start.config(state="normal")
-                    self.progress_label.config(text="發生錯誤，請查看上方記錄")
-                    self._set_status(f"致命錯誤：{data}", "error")
-                    messagebox.showerror("錯誤", data)
+                    self.progress_label.config(text=t("gui.status.fatal_label"))
+                    self._set_status(t("gui.status.fatal", error=data), "error")
+                    messagebox.showerror(t("gui.dlg.error_title"), data)
         except queue.Empty:
             pass
         self.root.after(100, self._poll_queue)
@@ -676,12 +690,12 @@ class SubtitlerApp:
             self.frame_retry.grid_remove()
             return
 
-        self.retry_label.config(text=f"以下段落失敗，可勾選後重試：")
+        self.retry_label.config(text=t("gui.lbl.failed_hint"))
         for i in failed_indices:
             var = tk.BooleanVar(value=True)
             self._failed_vars[i] = var
             ttk.Checkbutton(
-                self.retry_checks_frame, text=f"第 {i + 1} 段", variable=var
+                self.retry_checks_frame, text=t("gui.chk.segment", index=i + 1), variable=var
             ).pack(anchor="w")
         self.frame_retry.grid(row=4, column=0, sticky="ew", padx=14, pady=(0, 6))
 
