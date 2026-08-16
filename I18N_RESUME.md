@@ -14,10 +14,11 @@
 
 ## 現在停在哪
 
-**批次 4 完成。gui.py / translator.py / config.py / main.py 的寫死中日文全部歸零**
-（只剩 ALLOWLIST 的三個檔：i18n.py 語言自稱、logtext.py log 母語言、prompts.py Gemini prompt）。
+**批次 5 完成（四語各 53 條，key 集合與 placeholder 已驗一致）。**
 
-**下一步：批次 5 — 简中／英／日譯文（各 59 條），從 `locales/zh_tw.py` 翻。**
+**下一步：批次 6 — 從零建 `tests/`**（conftest 的 session 級 tk_root、三道防退化、
+`test_nothing_shadows_the_translation_function`、GUI smoke 四語、首次啟動視窗、
+輸出基準四語比對、★ 切介面語言不影響字幕語言）。之後才是收尾文件。
 
 ## 已完成的 commit
 
@@ -33,7 +34,8 @@
 | `1ff2989` | 批次 1 後半：`src/config.py`、`src/locales/`（四個空表）、首次啟動選語言、設定視窗語言列、重啟提示 |
 | `80fe88b` | 批次 2-1：`logtext.py` + `prompts.py`（純常數，未接線） |
 | `f108763` | 批次 2-2：translator/gui 接上 logtext 與 prompts，`_log` 改 fail-closed |
-| `75c1773` | 批次 3：gui.py 43 處介面文字改走 `t()`，zh_tw 母表 55 條 |
+| `75c1773` | 批次 3：gui.py 43 處介面文字改走 `t()`，zh_tw 母表 |
+| `a5f1cae` | 批次 4：translator.py 錯誤與進度訊息改走 `t()`（全專案 CJK 歸零） |
 
 **分支未合併、未 push。**
 
