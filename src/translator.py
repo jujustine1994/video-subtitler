@@ -10,6 +10,10 @@ import subprocess
 from google import genai
 from google.genai import types
 
+from . import prompts
+from .i18n import t
+from .logtext import LOG_TEXT
+
 CHUNK_DURATION = 1800  # 每段處理長度（秒），30 分鐘
 MODEL_NAME = "gemini-flash-latest"  # 供 log 任務起始行標示，翻譯呼叫也共用此常數
 
@@ -57,7 +61,8 @@ def extract_audio_segment(video_path: str, start_time: float, duration: float, o
     ]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if not os.path.exists(out_path):
-        raise RuntimeError("ffmpeg 音訊擷取失敗，請確認 FFmpeg 已安裝並加入系統環境變數（PATH）。")
+        # 這條會經 gui._fatal() 顯示給使用者看，是介面文字不是 log
+        raise RuntimeError(t("err.ffmpeg_failed"))
 
 
 def renumber_srt(srt_text: str) -> str:
@@ -156,33 +161,21 @@ def _is_retryable(err: Exception) -> bool:
 
 
 def translate_segment(client, audio_path: str, segment_index: int, offset_seconds: float,
-                       target_language: str = "繁體中文", on_log=None, on_retry=None,
-                       on_error=None) -> str:
+                       target_language: str = prompts.DEFAULT_TARGET_LANGUAGE,
+                       on_log=None, on_retry=None, on_error=None) -> str:
     """
     上傳音訊並呼叫 Gemini 翻譯成 SRT，失敗時依 RETRYABLE_MARKERS 判斷是否重試。
+
+    target_language：**字幕**的目標語言。跟著影片音訊走，與介面語言完全無關
+                   （見 prompts.py）。呼叫端目前不傳，永遠是繁體中文。
     on_log(str)：一般進度訊息（不落檔）
     on_retry(attempt, delay)：重試前回報嘗試次數與等待秒數（UI 用，不落檔）
-    on_error(str)：把「已消毒」的錯誤摘要（型別 + status code + 重試次數，絕無金鑰）
-                   交回呼叫端落檔為 ERROR 行。**不會**傳入 str(e)。
+    on_error(ui_msg, log_msg)：「已消毒」的錯誤摘要（型別 + status code + 重試次數，
+                   絕無金鑰）。ui_msg 給畫面、log_msg 給 logs/app.log（固定繁中）。
+                   **不會**傳入 str(e)。
     成功回傳修復後的 SRT 文字；重試耗盡仍失敗則拋出最後一次例外。
     """
-    prompt = f"""
-    請聽這段音訊，將其內容翻譯為 {target_language}，並輸出標準 SRT 字幕格式。
-
-    輸出格式：JSON 格式，包含欄位 "srt_content"。僅輸出 JSON，不附任何說明。
-
-    時間軸規則（最高優先級）：
-    1. 所有時間戳必須使用 HH:MM:SS,mmm 格式（例如 00:20:37,340），小時位絕對不可省略。
-    2. 時間軸從 00:00:00,000 起算，對應音訊的絕對起點。
-    3. 每條字幕的結束時間必須早於下一條字幕的開始時間（嚴格遞增，不可重疊）。
-    4. 靜默段不需輸出字幕，但下一條字幕的時間戳必須反映真實的音訊位置。
-    5. 每條字幕的顯示時間最長不可超過 5 秒（結束時間 - 開始時間 ≤ 5 秒）。若說話內容超過 5 秒，必須拆分為多條字幕。
-
-    內容規則：
-    1. 每行字幕最多 15 個中文字，過長請斷句或拆分為多個字幕塊。
-    2. 有人聲說話時，無論清晰或模糊，都必須盡力辨識並翻譯，結合前後文補全語意。
-    3. 僅在「完全沒有人聲」的片段（純音樂、純雜音、非語言情緒音、呻吟聲、笑聲、哭聲）才略過，不輸出該段字幕。
-    """
+    prompt = prompts.TRANSLATE_PROMPT.format(target_language=target_language)
 
     last_err = None
     n = len(RETRY_DELAYS)
@@ -194,15 +187,28 @@ def translate_segment(client, audio_path: str, segment_index: int, offset_second
             safe = _safe_err(e)   # 只有型別 + status code，永不含金鑰
             if attempt >= n or not _is_retryable(e):
                 if on_error:
-                    on_error(f"第{segment_index + 1}段 上傳Gemini -> {safe} | 重試 {attempt}/{n} 後失敗")
+                    _report_error(on_error, "segment_error_final",
+                                  segment_index + 1, safe, attempt, n)
                 raise
             delay = RETRY_DELAYS[attempt]
             if on_error:
-                on_error(f"第{segment_index + 1}段 上傳Gemini -> {safe} | 重試 {attempt + 1}/{n}")
+                _report_error(on_error, "segment_error",
+                              segment_index + 1, safe, attempt + 1, n)
             if on_retry:
                 on_retry(attempt + 1, delay)
             time.sleep(delay)
     raise last_err
+
+
+def _report_error(on_error, key: str, index: int, detail: str, attempt: int, total: int):
+    """同一條錯誤同時給 UI 與 log 檔：一個呼叫吃兩邊，不要維護兩套呼叫，
+    否則一定會有地方漏記（windows-tool.md）。
+
+    UI 那條走 t()（跟著介面語言），log 那條走 LOG_TEXT（固定繁中）。
+    ⚠ 繁中模式下兩者字面一模一樣是**正常的**——重疊是設計不是 bug。
+    """
+    fmt = dict(index=index, detail=detail, attempt=attempt, total=total)
+    on_error(t(f"log.{key}", **fmt), LOG_TEXT[key].format(**fmt))
 
 
 def _call_gemini(client, audio_path: str, prompt: str, offset_seconds: float, on_log) -> str:
@@ -212,7 +218,8 @@ def _call_gemini(client, audio_path: str, prompt: str, offset_seconds: float, on
         audio_file = client.files.get(name=audio_file.name)
 
     if on_log:
-        on_log(f"AI 已就緒，開始翻譯 ({MODEL_NAME})...")
+        # MODEL_NAME 是資料（餵給 API 的模型代號），只是原樣顯示在畫面上
+        on_log(t("gui.log.ai_ready", model=MODEL_NAME))
 
     try:
         response = client.models.generate_content(
