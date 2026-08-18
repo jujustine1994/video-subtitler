@@ -24,6 +24,12 @@
 
 ## 更新記錄
 
+### 2026-08-17 — launcher.ps1 拿掉失效的 winget/手動安裝 Python 步驟
+`winget install --id Python.Python.3`（不帶次版號）已被上游下架，靜默失效；備援
+的手動下載路徑也寫死 `python-3.12.9`，同樣會過期。改成只檢查 uv，
+`uv venv venv --python 3.13` 讓 uv 自己下載 Python。步驟從 [1/4]~[4/4] 改成
+[1/3]~[3/3]，FFmpeg 的 ARM64 模擬執行提醒維持不動。
+
 ### 2026-08-16
 - **新增**: 介面多語言（i18n）——繁體中文／简体中文／English／日本語，各 53 條字串
   - 新增 `src/i18n.py`（查表核心）、`src/locales/`（四個語言檔）、`src/config.py`
