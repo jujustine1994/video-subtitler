@@ -22,6 +22,7 @@ STRINGS: dict[str, str] = {
     "gui.frame.file":           " 影片檔案 ",
     "gui.frame.progress":       " 處理進度 ",
     "gui.frame.retry":          " 失敗段落 ",
+    "gui.frame.update":         " 版本更新 ",
 
     # ── 按鈕與勾選 ─────────────────────────────────────────────────
     "gui.btn.pick_file":        "選擇影片",
@@ -30,6 +31,8 @@ STRINGS: dict[str, str] = {
     "gui.btn.retry":            "重試所選段落",
     "gui.btn.apply":            "套用",
     "gui.btn.cancel":           "取消",
+    "gui.btn.check_update":     "檢查更新",
+    "gui.btn.install_update":   "一鍵安裝",
     "gui.chk.remember_key":     "記住",
     "gui.chk.segment":          "第 {index} 段",
 
@@ -93,4 +96,19 @@ STRINGS: dict[str, str] = {
 
     # ── 會顯示給使用者看的例外訊息 ─────────────────────────────────
     "err.ffmpeg_failed":        "ffmpeg 音訊擷取失敗，請確認 FFmpeg 已安裝並加入系統環境變數（PATH）。",
+
+    # ── 版本更新（設定視窗的「版本更新」區塊）─────────────────────────
+    "gui.update.checking":      "檢查中...",
+    "gui.update.no_git":        "此版本無法自動更新，請至 GitHub 頁面下載最新版本。",
+    "gui.update.offline":       "連不上 GitHub，請確認網路連線後再試一次。",
+    "gui.update.dirty":         "偵測到本機程式碼有手動修改，已略過（避免覆蓋你的修改）。",
+    "gui.update.ahead":         "本機有尚未同步的變更，已略過（避免覆蓋你的修改）。",
+    "gui.update.up_to_date":    "已是最新版本。",
+    "gui.update.available":     "發現新版本（{count} 筆變更），點「一鍵安裝」更新。",
+    "gui.update.confirm_title": "確認安裝更新",
+    "gui.update.confirm_body":  "即將更新程式碼，需要手動重啟程式才會生效。\n\n本次變更：\n{summary}\n\n是否繼續？",
+    "gui.update.installing":    "安裝中...",
+    "gui.update.updated":       "已更新到最新版本（{commit}），請關閉程式後重新開啟。",
+    "gui.update.done_body":     "已安裝最新版本，請關閉這個視窗後重新雙擊啟動器，讓新版本生效。",
+    "gui.update.error":         "檢查更新失敗：{msg}",
 }

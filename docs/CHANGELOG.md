@@ -24,6 +24,24 @@
 
 ## 更新記錄
 
+### 2026-08-24 — 設定視窗新增「版本更新」區塊（手動檢查 / 一鍵安裝）
+- **新增**: `scripts/check_update.ps1` — git fetch/diff/checkout 純資料層，只印
+  一行 JSON（`no_git`/`offline`/`dirty`/`ahead`/`up_to_date`/`update_available`/
+  `updated`/`error`），只碰程式碼路徑（`src`、`tests`、`docs`、`scripts`、
+  `requirements.txt`、`launcher.ps1`、`README.md`、`*.bat`），不動 `.tool_config.json`
+  / `.env` / `logs/` 等使用者本機資料
+- **新增**: `src/update_checker.py` — 呼叫子行程並解析 JSON，不碰 tkinter
+- **新增**: 設定視窗（`_open_settings`）內新增「版本更新」`LabelFrame` 區塊——
+  「檢查更新」按鈕（背景執行緒跑 `git fetch`，`.after(0, ...)` 送回主執行緒，
+  包 try/except 防視窗中途關閉炸掉）、有新版本才出現的「一鍵安裝」按鈕、
+  安裝前跳確認框列出本次變更摘要、安裝完跳訊息框請使用者手動關閉重開
+  （**不自動重啟**，`launcher.ps1` 未加任何自動觸發）
+- **新增**: 四個語言檔（zh_tw/zh_cn/en/ja）各補 15 條 `gui.update.*` /
+  `gui.btn.check_update` / `gui.btn.install_update` / `gui.frame.update` 字串
+- **修改**: `_open_settings` 上方註解由「設定視窗（僅外觀）」改為
+  「設定視窗（外觀 + 版本更新）」，反映其範圍已不只外觀設定
+- **新增**: `scripts/README.md` — 腳本索引表
+
 ### 2026-08-17 — launcher.ps1 拿掉失效的 winget/手動安裝 Python 步驟
 `winget install --id Python.Python.3`（不帶次版號）已被上游下架，靜默失效；備援
 的手動下載路徑也寫死 `python-3.12.9`，同樣會過期。改成只檢查 uv，

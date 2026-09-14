@@ -12,6 +12,7 @@ STRINGS: dict[str, str] = {
     "gui.frame.file":           " 视频文件 ",
     "gui.frame.progress":       " 处理进度 ",
     "gui.frame.retry":          " 失败段落 ",
+    "gui.frame.update":         " 版本更新 ",
 
     # ── 按钮与勾选 ──
     "gui.btn.pick_file":        "选择视频",
@@ -20,6 +21,8 @@ STRINGS: dict[str, str] = {
     "gui.btn.retry":            "重试所选段落",
     "gui.btn.apply":            "应用",
     "gui.btn.cancel":           "取消",
+    "gui.btn.check_update":     "检查更新",
+    "gui.btn.install_update":   "一键安装",
     "gui.chk.remember_key":     "记住",
     "gui.chk.segment":          "第 {index} 段",
 
@@ -79,4 +82,19 @@ STRINGS: dict[str, str] = {
 
     # ── 会显示给使用者看的异常消息 ──
     "err.ffmpeg_failed":        "ffmpeg 音频提取失败，请确认 FFmpeg 已安装并加入系统环境变量（PATH）。",
+
+    # ── 版本更新（设置窗口的「版本更新」区块）──
+    "gui.update.checking":      "检查中...",
+    "gui.update.no_git":        "此版本无法自动更新，请至 GitHub 页面下载最新版本。",
+    "gui.update.offline":       "连不上 GitHub，请确认网络连接后再试一次。",
+    "gui.update.dirty":         "检测到本机代码有手动修改，已跳过（避免覆盖你的修改）。",
+    "gui.update.ahead":         "本机有尚未同步的变更，已跳过（避免覆盖你的修改）。",
+    "gui.update.up_to_date":    "已是最新版本。",
+    "gui.update.available":     "发现新版本（{count} 项变更），点「一键安装」更新。",
+    "gui.update.confirm_title": "确认安装更新",
+    "gui.update.confirm_body":  "即将更新代码，需要手动重启程序才会生效。\n\n本次变更：\n{summary}\n\n是否继续？",
+    "gui.update.installing":    "安装中...",
+    "gui.update.updated":       "已更新到最新版本（{commit}），请关闭程序后重新打开。",
+    "gui.update.done_body":     "已安装最新版本，请关闭这个窗口后重新双击启动器，让新版本生效。",
+    "gui.update.error":         "检查更新失败：{msg}",
 }

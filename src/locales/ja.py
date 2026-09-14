@@ -12,6 +12,7 @@ STRINGS: dict[str, str] = {
     "gui.frame.file":           " 動画ファイル ",
     "gui.frame.progress":       " 処理状況 ",
     "gui.frame.retry":          " 失敗セグメント ",
+    "gui.frame.update":         " バージョン更新 ",
 
     # ── ボタン・チェックボックス ──
     "gui.btn.pick_file":        "動画を選択",
@@ -20,6 +21,8 @@ STRINGS: dict[str, str] = {
     "gui.btn.retry":            "選択したセグメントを再実行",
     "gui.btn.apply":            "適用",
     "gui.btn.cancel":           "キャンセル",
+    "gui.btn.check_update":     "更新を確認",
+    "gui.btn.install_update":   "ワンクリックで更新",
     "gui.chk.remember_key":     "記憶",
     "gui.chk.segment":          "セグメント {index}",
 
@@ -80,4 +83,19 @@ STRINGS: dict[str, str] = {
 
     # ── 利用者に表示される例外メッセージ ──
     "err.ffmpeg_failed":        "ffmpeg の音声抽出に失敗しました。FFmpeg がインストールされ、システムの PATH に追加されているか確認してください。",
+
+    # ── バージョン更新（設定ウィンドウの「バージョン更新」セクション）──
+    "gui.update.checking":      "確認中...",
+    "gui.update.no_git":        "このバージョンは自動更新できません。GitHub ページから最新版をダウンロードしてください。",
+    "gui.update.offline":       "GitHub に接続できません。ネットワーク接続を確認してもう一度お試しください。",
+    "gui.update.dirty":         "ローカルのコードに手動での変更が検出されたため、スキップしました（変更を上書きしないため）。",
+    "gui.update.ahead":         "ローカルに未同期の変更があるため、スキップしました（変更を上書きしないため）。",
+    "gui.update.up_to_date":    "既に最新バージョンです。",
+    "gui.update.available":     "新しいバージョンがあります（{count} 件の変更）。「ワンクリックで更新」をクリックしてください。",
+    "gui.update.confirm_title": "更新の確認",
+    "gui.update.confirm_body":  "コードを更新します。反映させるには手動でアプリを再起動する必要があります。\n\n今回の変更：\n{summary}\n\n続けますか？",
+    "gui.update.installing":    "インストール中...",
+    "gui.update.updated":       "最新バージョン（{commit}）に更新しました。アプリを閉じて再度開いてください。",
+    "gui.update.done_body":     "最新バージョンをインストールしました。このウィンドウを閉じて、起動ファイルをもう一度ダブルクリックしてください。",
+    "gui.update.error":         "更新の確認に失敗しました：{msg}",
 }

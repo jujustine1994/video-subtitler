@@ -12,6 +12,7 @@ STRINGS: dict[str, str] = {
     "gui.frame.file":           " Video File ",
     "gui.frame.progress":       " Progress ",
     "gui.frame.retry":          " Failed Segments ",
+    "gui.frame.update":         " Software Update ",
 
     # ── Buttons / checkboxes ──
     "gui.btn.pick_file":        "Browse",
@@ -20,6 +21,8 @@ STRINGS: dict[str, str] = {
     "gui.btn.retry":            "Retry Selected",
     "gui.btn.apply":            "Apply",
     "gui.btn.cancel":           "Cancel",
+    "gui.btn.check_update":     "Check for Updates",
+    "gui.btn.install_update":   "Install Update",
     "gui.chk.remember_key":     "Remember",
     "gui.chk.segment":          "Segment {index}",
 
@@ -80,4 +83,19 @@ STRINGS: dict[str, str] = {
 
     # ── Exceptions shown to the user ──
     "err.ffmpeg_failed":        "ffmpeg could not extract the audio. Make sure FFmpeg is installed and on your system PATH.",
+
+    # ── Software update (Settings dialog "Software Update" section) ──
+    "gui.update.checking":      "Checking...",
+    "gui.update.no_git":        "This copy can't auto-update. Please download the latest version from GitHub.",
+    "gui.update.offline":       "Couldn't reach GitHub. Check your network connection and try again.",
+    "gui.update.dirty":         "Local code has manual changes, skipped to avoid overwriting them.",
+    "gui.update.ahead":         "Local code has unsynced changes, skipped to avoid overwriting them.",
+    "gui.update.up_to_date":    "Already up to date.",
+    "gui.update.available":     "New version available ({count} change(s)). Click \"Install Update\" to update.",
+    "gui.update.confirm_title": "Confirm Update",
+    "gui.update.confirm_body":  "About to update the code. You'll need to restart the app manually for it to take effect.\n\nThis update:\n{summary}\n\nContinue?",
+    "gui.update.installing":    "Installing...",
+    "gui.update.updated":       "Updated to the latest version ({commit}). Please close and reopen the app.",
+    "gui.update.done_body":     "The latest version has been installed. Close this window and double-click the launcher again for it to take effect.",
+    "gui.update.error":         "Update check failed: {msg}",
 }
