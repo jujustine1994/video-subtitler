@@ -24,6 +24,16 @@
 
 ## 更新記錄
 
+### 2026-09-14 — 維護：venv 改用 uv 管理的獨立 Python（不依賴系統 Python）
+
+原本 `venv` 是用 Microsoft Store 版 Python 3.13 建的（沙盒安裝，容易有套件裝了
+但其他環境讀不到、資料夾存取受限等問題）。照 `windows-tool.md` 既定規範改用
+`uv venv venv --python 3.13`：uv 會自己管理一份獨立的 Python 3.13.12，所有專案
+共用同一份，不依賴系統上裝的任何 Python。套件安裝改用
+`uv pip install -r requirements.txt --python venv\Scripts\python.exe`。舊 venv
+備份搬到專案外 `Documents/Code/_venv_backups/video-subtitler/venv_old_store_20260914/`。
+驗證：測試套件 96 條全過，跟改之前一致。
+
 ### 2026-08-24 — 設定視窗新增「版本更新」區塊（手動檢查 / 一鍵安裝）
 - **新增**: `scripts/check_update.ps1` — git fetch/diff/checkout 純資料層，只印
   一行 JSON（`no_git`/`offline`/`dirty`/`ahead`/`up_to_date`/`update_available`/
