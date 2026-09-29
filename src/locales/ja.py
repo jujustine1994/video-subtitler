@@ -43,7 +43,9 @@ STRINGS: dict[str, str] = {
     "gui.dlg.error_title":      "エラー",
     "gui.dlg.info_title":       "お知らせ",
     "gui.dlg.done_title":       "完了",
+    "gui.dlg.resume_title":     "未完了の作業を検出",
     "gui.filetype.video":       "動画ファイル",
+    "gui.filetype.audio":       "音声ファイル",
     "gui.filetype.all":         "すべてのファイル",
 
     # ── メッセージ ──
@@ -51,6 +53,7 @@ STRINGS: dict[str, str] = {
     "gui.msg.no_api_key":          "Gemini API キーを入力してください。",
     "gui.msg.select_one_segment":  "失敗したセグメントを少なくとも 1 つ選んでください。",
     "gui.msg.done":                "完了しました：\n{path}",
+    "gui.msg.resume_found":        "未完了の字幕作業が見つかりました：\n{name}\n\n{count} セグメントが完了しています。\n\nこのファイルを自動選択し、「開始」を押すと続行しますか？",
 
     # ── ステータスバー・進捗 ──
     "gui.status.idle":               "開始待ち...",
@@ -60,6 +63,7 @@ STRINGS: dict[str, str] = {
     "gui.status.retrying":           "再実行中です。しばらくお待ちください...",
     "gui.status.done":               "完了しました！",
     "gui.status.done_with_failures": "完了しましたが {count} 個のセグメントが失敗しました",
+    "gui.status.quota_paused":       "無料枠を使い切りました。進捗は保存済みです",
     "gui.status.fatal_label":        "エラーが発生しました。上のログを確認してください。",
     "gui.status.fatal":              "致命的なエラー：{error}",
     "gui.progress.segments":         "{done} / {total} セグメント完了",
@@ -75,6 +79,9 @@ STRINGS: dict[str, str] = {
     "gui.log.output":           "\n字幕を出力しました: {path}",
     "gui.log.retry_start":      "\nセグメント {indices} を再実行します...",
     "gui.log.ai_ready":         "AI の準備ができました。翻訳を開始します ({model})...",
+    "gui.log.resume_found":     "前回の進捗を見つけました。完了済みの {count} セグメントをスキップします。",
+    "gui.log.quota_paused":     "無料枠を一時的に使い切りました。進捗は保存済みです。同じ動画を選んで開始すれば後で再開できます。",
+    "gui.log.resume_selected":  "未完了の作業を自動選択しました：{name}",
 
     # ── 画面とログの両方に出るメッセージ（ログ側は設計どおり繁体字のまま。
     #    logtext.py を参照）──

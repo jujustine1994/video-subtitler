@@ -15,7 +15,7 @@ from tkinter import ttk, messagebox, scrolledtext, filedialog
 
 from dotenv import load_dotenv, set_key
 
-from . import i18n, translator, update_checker
+from . import i18n, resume, translator, update_checker
 from .config import load_config, save_config
 from .i18n import t
 from .logtext import LOG_TEXT
@@ -155,6 +155,7 @@ class SubtitlerApp:
         self._apply_theme(self._current_theme)
         self._load_api_key()
         self._poll_queue()
+        self.root.after(150, self._offer_pending_resume)
 
     # ---- UI 建置 ----
 
@@ -551,10 +552,25 @@ class SubtitlerApp:
             title=t("gui.dlg.pick_file_title"),
             # 萬用字元樣式是資料，永遠不翻；只有前面的說明文字走 t()
             filetypes=[(t("gui.filetype.video"), "*.mp4 *.mkv *.avi *.mov *.wmv"),
+                       (t("gui.filetype.audio"), "*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.webm"),
                        (t("gui.filetype.all"), "*.*")],
         )
         if path:
             self.file_var.set(path)
+
+    def _offer_pending_resume(self):
+        """啟動時主動提示最近一份有效 checkpoint，確認後直接填入影片欄位。"""
+        jobs = resume.pending_jobs(translator.MODEL_NAME)
+        if not jobs:
+            return
+        job = jobs[0]
+        if messagebox.askyesno(
+            t("gui.dlg.resume_title"),
+            t("gui.msg.resume_found", name=os.path.basename(job["path"]),
+              count=job["completed"]),
+        ):
+            self.file_var.set(job["path"])
+            self._log(t("gui.log.resume_selected", name=os.path.basename(job["path"])))
 
     # ---- 執行：開始翻譯 ----
 
@@ -589,6 +605,7 @@ class SubtitlerApp:
         self._client = translator.make_client(api_key)
         self._segments = {}
         self._segment_offsets = {}
+        self._resume_state = None
 
         worker = threading.Thread(target=self._worker_full_run, daemon=True)
         worker.start()
@@ -609,22 +626,38 @@ class SubtitlerApp:
                 indices.append(i)
                 self._segment_offsets[i] = start_time
 
+            self._resume_state = resume.load(
+                self._video_path, duration, translator.CHUNK_DURATION, translator.MODEL_NAME
+            ) or resume.create(
+                self._video_path, duration, translator.CHUNK_DURATION, translator.MODEL_NAME
+            )
+            self._segments = {int(i): content for i, content in self._resume_state["segments"].items()
+                              if isinstance(content, str)}
+            pending = [i for i in indices if i not in self._segments]
+
             # ---- 任務起始：一行，關鍵設定（模型、段數）塞同一行 ----
             _write_log_header(LOG_TEXT["task_start_full"].format(
                 name=os.path.basename(self._video_path),
-                model=translator.MODEL_NAME, count=len(indices),
+                model=translator.MODEL_NAME, count=len(pending),
             ))
-            self._log(t("gui.log.total_segments", count=len(indices)))
-            self._run_segments(indices, len(indices))
+            self._log(t("gui.log.total_segments", count=len(pending)))
+            if self._segments:
+                self._log(t("gui.log.resume_found", count=len(self._segments)))
+            self._run_segments(pending, len(indices), completed_count=len(self._segments))
             self._finish_run()
+        except translator.QuotaExhaustedError:
+            self._log(t("gui.log.quota_paused"))
+            self._set_status(t("gui.status.quota_paused"), "error")
+            self._log_task_result(ok=False)
+            self._done(None, [])
         except Exception as e:
             # UI 可見完整錯誤（ephemeral）；落檔只記型別，絕不寫 str(e)（可能挾帶金鑰 URL）
             self._log(f"\n[ERROR] {type(e).__name__}", "FAIL")
             self._log_task_result(ok=False)
             self._fatal(str(e))
 
-    def _run_segments(self, indices, total_for_progress):
-        done_count = 0
+    def _run_segments(self, indices, total_for_progress, completed_count=0):
+        done_count = completed_count
         for i in indices:
             start_time = self._segment_offsets[i]
             self._log(t("gui.log.segment_start", index=i + 1,
@@ -648,12 +681,16 @@ class SubtitlerApp:
                         ui_msg, "ERROR", log_msg=log_msg),
                 )
                 self._segments[i] = srt_seg
+                if self._resume_state is not None:
+                    resume.record_segment(self._video_path, self._resume_state, i, srt_seg)
                 self._log(t("gui.log.segment_done", index=i + 1))
             except Exception as e:
                 self._segments[i] = None
                 # ERROR 行已由 translator 的 on_error 落檔（含 status code）；此處只推 UI，不寫 str(e)
                 self._log(t("gui.log.segment_failed", index=i + 1,
                             error=type(e).__name__))
+                if translator.is_quota_error(e):
+                    raise translator.QuotaExhaustedError() from e
             finally:
                 if os.path.exists(temp_audio):
                     os.remove(temp_audio)
@@ -671,6 +708,7 @@ class SubtitlerApp:
             self._set_status(t("gui.status.done_with_failures", count=len(failed)), "error")
         else:
             self._set_status(t("gui.status.done"), "success")
+            resume.discard(self._video_path)
         # ---- 任務結束：成功/失敗 + 耗時 ----
         self._log_task_result(ok=not failed)
         self._done(self._output_path, failed)
@@ -776,7 +814,7 @@ class SubtitlerApp:
                     self.btn_start.config(state="normal")
                     self.btn_retry.config(state="normal")
                     self._show_failed_segments(failed_indices)
-                    if not failed_indices:
+                    if output_path and not failed_indices:
                         messagebox.showinfo(t("gui.dlg.done_title"),
                                             t("gui.msg.done", path=output_path))
                 elif msg_type == "fatal":

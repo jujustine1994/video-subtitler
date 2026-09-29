@@ -21,3 +21,7 @@ temp_seg_*.mp3
 
 # GUI 設定檔（本機主題偏好）
 .tool_config.json
+
+# 可續跑的字幕工作進度（影片旁的本機暫存資料）
+*.subtitler.resume.json
+.subtitler_resume_index.json

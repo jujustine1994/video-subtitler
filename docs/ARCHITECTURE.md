@@ -120,6 +120,19 @@ uv pip install -r requirements_test.txt --python "$env:USERPROFILE\venvs\video-s
 - 3 次後仍失敗：拋出最後一次例外，呼叫端（`gui.py` 的 `_run_segments`）捕捉後標記該段為 `None`，不中斷其他段
 - 非上述錯誤（格式解析失敗、API Key 無效等）：不重試，直接視為該段失敗
 
+## 免費額度用盡後續跑
+
+每支影片的已完成段落會立即存成影片旁的
+`<影片檔名>.<副檔名>.subtitler.resume.json`。這不是字幕成品，而是本機工作檔，
+已列入 `.gitignore`。
+
+- 每段 Gemini 呼叫成功後，`resume.record_segment()` 以「寫入暫存檔後 replace」的方式原子更新 checkpoint；程式意外關閉不會毀掉上一段的進度。
+- `_run_segments()` 偵測到 HTTP `429`、`RESOURCE_EXHAUSTED` 或 quota 類錯誤時，會停止後續段落並保留 checkpoint，不輸出殘缺字幕。
+- 再次選擇**同一路徑、未變動**的影片並按開始時，`resume.load()` 會跳過已完成段落，從第一個未完成段繼續。
+- checkpoint 會核對絕對路徑、檔案大小、修改時間、影片時長、切段秒數與模型名稱；任一不同即拒絕沿用，避免混入不同影片或模型的結果。
+- 完整成功並寫出 `.srt` 後才刪除 checkpoint。一般段落失敗也會保留已完成進度，供後續重跑或重新開始使用。
+- 專案根目錄的 `.subtitler_resume_index.json` 只記錄 checkpoint 的絕對路徑與最後更新時間（同樣不版控）。啟動時會驗證清單，提示最近一份有效工作；使用者確認後自動填入來源檔案欄位，仍須按「開始翻譯」才會呼叫 API。
+
 ---
 
 ## 關鍵設定變數
@@ -131,10 +144,12 @@ uv pip install -r requirements_test.txt --python "$env:USERPROFILE\venvs\video-s
 | `RETRYABLE_MARKERS` | `src/translator.py` | 判斷例外是否可重試的關鍵字清單 |
 | `GEMINI_API_KEY` | `.env` | Gemini API Key，GUI 啟動自動帶入欄位，按「開始」時寫回 |
 | `max_seconds` | `enforce_max_duration()` | 字幕最長顯示秒數，預設 `5` 秒 |
-| Gemini 模型 | `translator._call_gemini()` | `gemini-flash-latest` |
+| 轉錄模型 | `translator._call_gemini()` | `gemini-3.5-transcribe`；回傳詞級時間戳 |
+| 翻譯模型 | `translator._translate_cues()` | `gemini-3.5-flash-lite`；只能改字幕文字，不可改時間戳 |
 | GUI 主題 | `.tool_config.json` | `light` / `dark` / `financial`，由設定視窗寫入 |
 | 介面語言 | `.tool_config.json` | `language` 欄位：`zh_tw` / `zh_cn` / `en` / `ja`。**預設空字串**＝還沒選過，首次啟動會問 |
 | 字幕語言 | `src/prompts.py` | `DEFAULT_TARGET_LANGUAGE`，目前固定繁體中文。**與介面語言無關** |
+| 續跑 checkpoint | `src/resume.py` | `<影片>.<副檔名>.subtitler.resume.json`；僅保存成功段的 SRT 結果 |
 
 ---
 
@@ -144,9 +159,9 @@ uv pip install -r requirements_test.txt --python "$env:USERPROFILE\venvs\video-s
 
 **邏輯與 UI 分離**：`src/translator.py` 不含任何 `print`/`input`，所有進度透過 callback（`on_log`/`on_retry`）回報；`src/gui.py` 負責執行緒、queue、UI 渲染。方便未來若要加 CLI 模式或寫測試，不需碰 UI 程式碼。
 
-**google-genai SDK（新版）**：使用 `genai.Client` 初始化，`client.files.upload/get/delete`、`client.models.generate_content`。舊版 `google-generativeai` 已棄用，不可混用。
+**google-genai SDK（新版）**：使用 `genai.Client` 初始化。音訊以 Files API 上傳後交給 `client.interactions.create()` 的 `gemini-3.5-transcribe`；翻譯才使用 `client.models.generate_content()`。舊版 `google-generativeai` 已棄用，不可混用。
 
-**SRT 雙重保險**：Gemini 回傳 JSON（`srt_content` 欄位），若解析失敗則直接對原始文字跑 `fix_srt_format()`。合併後再跑 `enforce_max_duration()` + `renumber_srt()`，確保格式正確。
+**時間軸與翻譯分離**：只從 Gemini Transcribe 的 `word_info` annotations 建立 cue 的起迄時間；翻譯模型只收到 cue id 與文字，回傳缺 id、重複 id 或空文字就拒絕輸出。`_validate_cues()` 會拒絕零長度與重疊時間軸，合併時仍再跑 `enforce_max_duration()` + `renumber_srt()`。
 
 **多語言（i18n）**：介面文字全部走 `i18n.t("key")`，語言檔在 `src/locales/`。
 啟動時 `SubtitlerApp.__init__` 先 `set_lang()` 再建 widget——`t()` 是建置時查一次表，
@@ -169,3 +184,5 @@ log 是給維護者除錯用的，跟著使用者語言變等於自廢。同一�
 `LOG_TEXT`。**`log_msg` 預設 None＝不落檔（fail-closed）**，要落檔就得明講。
 
 **段落級容錯**：單段失敗不影響整體輸出，跑完即合併現有成功段；GUI 提供失敗段勾選補跑，避免長影片因單段問題整部重跑。
+
+**額度用盡是暫停而非一般失敗**：`translator.is_quota_error()` 將 HTTP 429 與 quota 訊息分流為 `QuotaExhaustedError`。GUI 顯示「進度已儲存」並停止工作；下一次完整開始流程會從 checkpoint 回復，避免免費額度已消耗的段落再次上傳。

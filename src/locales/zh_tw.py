@@ -53,8 +53,10 @@ STRINGS: dict[str, str] = {
     "gui.dlg.error_title":      "錯誤",
     "gui.dlg.info_title":       "提示",
     "gui.dlg.done_title":       "完成",
+    "gui.dlg.resume_title":     "找到未完成工作",
     # 檔案類型的說明文字（萬用字元樣式是資料，留在程式碼裡）
     "gui.filetype.video":       "影片檔案",
+    "gui.filetype.audio":       "音訊檔案",
     "gui.filetype.all":         "所有檔案",
 
     # ── 訊息 ───────────────────────────────────────────────────────
@@ -62,6 +64,7 @@ STRINGS: dict[str, str] = {
     "gui.msg.no_api_key":          "請輸入 Gemini API Key",
     "gui.msg.select_one_segment":  "請至少勾選一個失敗段落",
     "gui.msg.done":                "已完成：\n{path}",
+    "gui.msg.resume_found":        "找到未完成的字幕工作：\n{name}\n\n已完成 {count} 段。\n\n要自動選取此檔案並在按「開始翻譯」後續跑嗎？",
 
     # ── 狀態列與進度 ───────────────────────────────────────────────
     "gui.status.idle":               "等待開始...",
@@ -71,6 +74,7 @@ STRINGS: dict[str, str] = {
     "gui.status.retrying":           "重試中，請稍候...",
     "gui.status.done":               "已完成！",
     "gui.status.done_with_failures": "完成，但有 {count} 段失敗",
+    "gui.status.quota_paused":       "免費額度暫時用完，已儲存進度",
     "gui.status.fatal_label":        "發生錯誤，請查看上方記錄",
     "gui.status.fatal":              "致命錯誤：{error}",
     "gui.progress.segments":         "{done} / {total} 段完成",
@@ -86,6 +90,9 @@ STRINGS: dict[str, str] = {
     "gui.log.output":           "\n字幕已輸出: {path}",
     "gui.log.retry_start":      "\n重試第 {indices} 段...",
     "gui.log.ai_ready":         "AI 已就緒，開始翻譯 ({model})...",
+    "gui.log.resume_found":     "找到先前進度，略過已完成的 {count} 段。",
+    "gui.log.quota_paused":     "免費額度暫時用完，進度已儲存；下次選同一支影片並按開始即可續跑。",
+    "gui.log.resume_selected":  "已自動選取未完成工作：{name}",
 
     # ── 同時推 UI 又落檔的訊息 ─────────────────────────────────────
     # ⚠ 這兩條與 logtext.py 的 segment_error / segment_error_final 字面相同，

@@ -43,7 +43,9 @@ STRINGS: dict[str, str] = {
     "gui.dlg.error_title":      "Error",
     "gui.dlg.info_title":       "Notice",
     "gui.dlg.done_title":       "Done",
+    "gui.dlg.resume_title":     "Unfinished Job Found",
     "gui.filetype.video":       "Video files",
+    "gui.filetype.audio":       "Audio files",
     "gui.filetype.all":         "All files",
 
     # ── Messages ──
@@ -51,6 +53,7 @@ STRINGS: dict[str, str] = {
     "gui.msg.no_api_key":          "Please enter your Gemini API key.",
     "gui.msg.select_one_segment":  "Tick at least one failed segment.",
     "gui.msg.done":                "Finished:\n{path}",
+    "gui.msg.resume_found":        "An unfinished subtitle job was found:\n{name}\n\n{count} segment(s) are complete.\n\nSelect this file automatically, then resume when you click Start?",
 
     # ── Status bar / progress ──
     "gui.status.idle":               "Waiting to start...",
@@ -60,6 +63,7 @@ STRINGS: dict[str, str] = {
     "gui.status.retrying":           "Retrying, please wait...",
     "gui.status.done":               "Finished!",
     "gui.status.done_with_failures": "Finished, but {count} segment(s) failed",
+    "gui.status.quota_paused":       "Free quota exhausted; progress was saved",
     "gui.status.fatal_label":        "Something went wrong. See the log above.",
     "gui.status.fatal":              "Fatal error: {error}",
     "gui.progress.segments":         "{done} / {total} segments done",
@@ -75,6 +79,9 @@ STRINGS: dict[str, str] = {
     "gui.log.output":           "\nSubtitles written to: {path}",
     "gui.log.retry_start":      "\nRetrying segment(s) {indices}...",
     "gui.log.ai_ready":         "AI is ready, translating ({model})...",
+    "gui.log.resume_found":     "Previous progress found; skipping {count} completed segment(s).",
+    "gui.log.quota_paused":     "Free quota is temporarily exhausted. Progress is saved; select this video and start again later to resume.",
+    "gui.log.resume_selected":  "Automatically selected unfinished job: {name}",
 
     # ── Shown on screen AND written to the log (the log copy stays
     #    Traditional Chinese by design — see logtext.py) ──

@@ -7,6 +7,7 @@ import os
 import re
 import time
 import subprocess
+import json
 from google import genai
 from google.genai import types
 
@@ -15,11 +16,24 @@ from .i18n import t
 from .logtext import LOG_TEXT
 
 CHUNK_DURATION = 1800  # 每段處理長度（秒），30 分鐘
-MODEL_NAME = "gemini-flash-latest"  # 供 log 任務起始行標示，翻譯呼叫也共用此常數
+# 專用 ASR 與翻譯分開：時間軸只能由 ASR 的 word annotations 決定，翻譯不可改它。
+ASR_MODEL_NAME = "gemini-3.5-transcribe"
+TRANSLATION_MODEL_NAME = "gemini-3.5-flash-lite"
+MODEL_NAME = f"{ASR_MODEL_NAME} + {TRANSLATION_MODEL_NAME}"
 
 RETRY_DELAYS = (5, 15, 45)  # 指數後退秒數
 RETRYABLE_MARKERS = ("429", "quota", "exhausted", "timeout", "timed out",
                       "connection", "unavailable", "deadline")
+
+
+class QuotaExhaustedError(RuntimeError):
+    """免費額度暫時不足；呼叫端應保留 checkpoint，稍後再續跑。"""
+
+
+def is_quota_error(err: Exception) -> bool:
+    code = getattr(err, "code", None) or getattr(err, "status_code", None)
+    msg = str(err).lower()
+    return str(code) == "429" or "resource_exhausted" in msg or "quota" in msg
 
 
 def _safe_err(e: Exception) -> str:
@@ -211,6 +225,131 @@ def _report_error(on_error, key: str, index: int, detail: str, attempt: int, tot
     on_error(t(f"log.{key}", **fmt), LOG_TEXT[key].format(**fmt))
 
 
+def _offset_seconds(value) -> float:
+    """Gemini word annotation 的 `0.100s` 轉成秒。"""
+    match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)s\s*", str(value))
+    if not match:
+        raise ValueError(f"invalid word timestamp: {value!r}")
+    return float(match.group(1))
+
+
+def _extract_words(interaction) -> list[dict]:
+    words = []
+    for step in getattr(interaction, "steps", []) or []:
+        for content in getattr(step, "content", []) or []:
+            for annotation in getattr(content, "annotations", []) or []:
+                if getattr(annotation, "type", None) != "word_info":
+                    continue
+                text = str(getattr(annotation, "text", "")).strip()
+                if not text:
+                    continue
+                words.append({
+                    "text": text,
+                    "start": _offset_seconds(getattr(annotation, "start_offset", "")),
+                    "end": _offset_seconds(getattr(annotation, "end_offset", "")),
+                })
+    if not words:
+        raise RuntimeError("Gemini Transcribe returned no word timestamps")
+    return words
+
+
+def _join_words(words: list[dict]) -> str:
+    text = ""
+    for word in words:
+        piece = word["text"]
+        # 中文、日文、韓文不在字間插空白；其他語言保留可讀的單字間距。
+        cjk = re.search(r"[\u3000-\u9fff\uff00-\uffef]", piece)
+        prev_cjk = re.search(r"[\u3000-\u9fff\uff00-\uffef]$", text)
+        if text and not cjk and not prev_cjk and not text.endswith((" ", "\n")):
+            text += " "
+        text += piece
+    return text
+
+
+def _format_srt_time(seconds: float) -> str:
+    milliseconds = max(0, round(seconds * 1000))
+    hours, milliseconds = divmod(milliseconds, 3_600_000)
+    minutes, milliseconds = divmod(milliseconds, 60_000)
+    secs, milliseconds = divmod(milliseconds, 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
+
+
+def _source_cues(words: list[dict], offset_seconds: float) -> list[dict]:
+    """只以 ASR 回傳的詞級時間做 cue；不讓 LLM 產生或修補時間軸。"""
+    cues, bucket = [], []
+    for word in words:
+        bucket.append(word)
+        text = _join_words(bucket)
+        elapsed = word["end"] - bucket[0]["start"]
+        ending = word["text"].endswith(("。", "！", "？", ".", "!", "?"))
+        if ending or elapsed >= 5 or len(text) >= 30:
+            cues.append({"start": bucket[0]["start"] + offset_seconds,
+                         "end": word["end"] + offset_seconds, "text": text})
+            bucket = []
+    if bucket:
+        cues.append({"start": bucket[0]["start"] + offset_seconds,
+                     "end": bucket[-1]["end"] + offset_seconds,
+                     "text": _join_words(bucket)})
+
+    # API 偶爾會給標點 0 秒長度或前後 cue 共用邊界。SRT 不能有零長度，
+    # 且播放器對重疊 cue 的行為不一致；在不改變 start 的前提下修正 end。
+    for index, cue in enumerate(cues):
+        cue["end"] = max(cue["end"], cue["start"] + 0.1)
+        if index + 1 < len(cues) and cue["end"] >= cues[index + 1]["start"]:
+            cue["end"] = max(cue["start"] + 0.001, cues[index + 1]["start"] - 0.001)
+    _validate_cues(cues)
+    return cues
+
+
+def _validate_cues(cues: list[dict]) -> None:
+    previous_end = -1.0
+    for cue in cues:
+        if cue["end"] <= cue["start"]:
+            raise RuntimeError("invalid non-positive subtitle duration")
+        if cue["start"] < previous_end:
+            raise RuntimeError("overlapping subtitle timestamps")
+        previous_end = cue["end"]
+
+
+def _translate_cues(client, cues: list[dict], target_language: str) -> list[dict]:
+    payload = [{"id": index, "text": cue["text"]} for index, cue in enumerate(cues)]
+    prompt = (
+        f"Translate each subtitle text into {target_language}. Return JSON only with a "
+        "`translations` array. Each item must contain the original integer `id` and its "
+        "translated `text`. Preserve every id exactly once. Do not add timestamps, notes, "
+        "speaker names, or facts absent from the supplied text. Use Traditional Chinese "
+        "characters (Taiwan) only; do not emit Simplified Chinese.\n\n"
+        + json.dumps(payload, ensure_ascii=False)
+    )
+    response = client.models.generate_content(
+        model=TRANSLATION_MODEL_NAME,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        ),
+    )
+    try:
+        translated = json.loads(response.text)["translations"]
+        by_id = {item["id"]: str(item["text"]).strip() for item in translated}
+        if set(by_id) != set(range(len(cues))) or any(not text for text in by_id.values()):
+            raise ValueError("translation ids are incomplete")
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Gemini translation response is invalid; no subtitle was written") from exc
+    for index, cue in enumerate(cues):
+        cue["text"] = by_id[index]
+    return cues
+
+
+def _cues_to_srt(cues: list[dict]) -> str:
+    blocks = []
+    for index, cue in enumerate(cues, start=1):
+        blocks.append(
+            f"{index}\n{_format_srt_time(cue['start'])} --> {_format_srt_time(cue['end'])}\n{cue['text']}"
+        )
+    return "\n\n".join(blocks) + ("\n" if blocks else "")
+
+
 def _call_gemini(client, audio_path: str, prompt: str, offset_seconds: float, on_log) -> str:
     audio_file = client.files.upload(file=audio_path)
     while audio_file.state.name == "PROCESSING":
@@ -222,20 +361,20 @@ def _call_gemini(client, audio_path: str, prompt: str, offset_seconds: float, on
         on_log(t("gui.log.ai_ready", model=MODEL_NAME))
 
     try:
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=[prompt, audio_file],
-            config=types.GenerateContentConfig(response_mime_type="application/json")
+        interaction = client.interactions.create(
+            model=ASR_MODEL_NAME,
+            input=[{
+                "type": "audio", "uri": audio_file.uri, "mime_type": audio_file.mime_type,
+            }],
+            generation_config={"transcription_config": {"mode": {
+                "type": "verbatim", "timestamp_granularities": ["word"],
+            }}},
         )
     finally:
         client.files.delete(name=audio_file.name)
 
-    import json
-    try:
-        result = json.loads(response.text)
-        if isinstance(result, list):
-            result = result[0]
-        content = result.get("srt_content", "")
-        return fix_srt_format(content, offset_seconds)
-    except Exception:
-        return fix_srt_format(response.text, offset_seconds)
+    # `prompt` 保留為 translate_segment 的資料契約與既有測試入口；轉錄模型不接受
+    # 自由文字指令。翻譯只取得 ASR 文字與 cue id，無權更動 timestamp。
+    del prompt
+    cues = _source_cues(_extract_words(interaction), offset_seconds)
+    return _cues_to_srt(_translate_cues(client, cues, prompts.DEFAULT_TARGET_LANGUAGE))

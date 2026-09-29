@@ -74,11 +74,13 @@ Automatically generate Traditional Chinese `.srt` subtitle files for videos with
 
 - **Fully automated**: Select a video and the AI handles everything — no manual intervention required
 - **Long video support**: Videos longer than 30 minutes are automatically split into segments, processed individually, then merged — no length limit
+- **Quota-safe resume**: Each completed segment is checkpointed beside the video. If Gemini free-tier quota is exhausted, choose the same unchanged video later and processing resumes from the first unfinished segment
 - **Precise timestamp alignment**: Timestamps are anchored to `00:00:00,000` and merge seamlessly across segments
 - **Subtitle duration control**: Each subtitle displays for a maximum of 5 seconds; long dialogues are automatically split into multiple entries
 - **Noise filtering**: Background music, ambient noise, and non-speech sounds (laughter, crying) are skipped automatically
 - **API Key memory**: Saved after first entry and reused on subsequent runs
 - **Multilingual UI**: Traditional Chinese / Simplified Chinese / English / Japanese. Picked once on first launch, changeable later in Settings
+- **Accepted source files**: MP4, MKV, AVI, MOV, WMV, MP3, WAV, M4A, AAC, FLAC, OGG, Opus, and WebM. Other FFmpeg-readable inputs can be selected through “All files”
 
 ### How to Use
 
@@ -90,6 +92,13 @@ Automatically generate Traditional Chinese `.srt` subtitle files for videos with
 6. Read the instructions and press Enter, then select your video file
 7. Enter or confirm your API Key
 8. Wait for processing to finish — the `.srt` file will appear next to the video
+
+### Resuming an unfinished job
+
+You can close the app at any time after a segment has completed. On the next launch,
+the app detects the most recently saved unfinished job and asks whether to select that
+source file automatically. Confirm it, then click Start to continue from the first
+unfinished segment. The video must remain at the same path and be unchanged.
 
 ### UI language is not subtitle language
 
@@ -109,7 +118,8 @@ is a maintenance tool, so it must not follow the end user's language.
 ### Limitations
 
 - **30-minute rule**: Audio is uploaded in 30-minute segments. A 90-minute video takes 3 sequential passes (not parallel)
-- **API quota**: Free-tier Gemini has a daily request limit — if exceeded, wait until the next day
+- **API quota**: Free-tier Gemini has a daily request limit. When quota is exhausted, progress is kept in `<video>.subtitler.resume.json`; select the same unchanged video later and click Start to continue. The checkpoint is removed after a fully successful run
 - **Safety filtering**: Explicit or sensitive content may be blocked by Google's safety filters
 - **Internet required**: Audio is uploaded to Google Cloud for processing
 - **Privacy**: Free-tier usage may be used by Google to improve their services
+- **Quality**: Speech recognition can still mishear names and technical terminology. Review important subtitles, especially finance, medical, legal, or technical recordings

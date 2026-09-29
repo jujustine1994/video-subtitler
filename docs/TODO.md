@@ -53,6 +53,10 @@
 
 ## 其他
 
+- [x] 免費額度續跑：成功段原子寫入影片旁 checkpoint；遇到 Gemini 429/quota 停止，下一次選同一未變動影片自動略過完成段。`tests/test_resume.py` 覆蓋 round-trip、清除及影片／設定變動拒用舊 checkpoint。
+- [x] 啟動時未完成工作提醒：resume index 找到最近有效 checkpoint 後詢問使用者，確認即自動填入檔案欄位。
+- [x] 專用轉錄模型遷移：`gemini-3.5-transcribe` 取詞級 annotation → cue 切句器 → `gemini-3.5-flash-lite` 翻譯，翻譯無法改變時間戳。
+- [ ] 專有名詞品質：實測技術音檔曾將「矽晶圓」誤辨為「細菌元」，且有簡繁混用。研究可由使用者維護的術語表、繁簡正規化與品質標記；Google custom vocabulary 與詞級時間戳不能同時啟用，不能直接併用。
 - [ ] 校正專案 MD（依新模板：ARCHITECTURE 補現狀，CHANGELOG 拿掉現狀段）
 - [x] 檢查系統是否已安裝 FFmpeg & ffprobe
 - [x] 建立 Python 虛擬環境與安裝套件

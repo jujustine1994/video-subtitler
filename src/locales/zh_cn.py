@@ -43,7 +43,9 @@ STRINGS: dict[str, str] = {
     "gui.dlg.error_title":      "错误",
     "gui.dlg.info_title":       "提示",
     "gui.dlg.done_title":       "完成",
+    "gui.dlg.resume_title":     "找到未完成任务",
     "gui.filetype.video":       "视频文件",
+    "gui.filetype.audio":       "音频文件",
     "gui.filetype.all":         "所有文件",
 
     # ── 消息 ──
@@ -51,6 +53,7 @@ STRINGS: dict[str, str] = {
     "gui.msg.no_api_key":          "请输入 Gemini API Key",
     "gui.msg.select_one_segment":  "请至少勾选一个失败段落",
     "gui.msg.done":                "已完成：\n{path}",
+    "gui.msg.resume_found":        "找到未完成的字幕任务：\n{name}\n\n已完成 {count} 段。\n\n要自动选择此文件，并在按「开始」后继续吗？",
 
     # ── 状态栏与进度 ──
     "gui.status.idle":               "等待开始...",
@@ -60,6 +63,7 @@ STRINGS: dict[str, str] = {
     "gui.status.retrying":           "重试中，请稍候...",
     "gui.status.done":               "已完成！",
     "gui.status.done_with_failures": "完成，但有 {count} 段失败",
+    "gui.status.quota_paused":       "免费额度暂时用完，进度已保存",
     "gui.status.fatal_label":        "发生错误，请查看上方记录",
     "gui.status.fatal":              "致命错误：{error}",
     "gui.progress.segments":         "{done} / {total} 段完成",
@@ -75,6 +79,9 @@ STRINGS: dict[str, str] = {
     "gui.log.output":           "\n字幕已输出: {path}",
     "gui.log.retry_start":      "\n重试第 {indices} 段...",
     "gui.log.ai_ready":         "AI 已就绪，开始翻译 ({model})...",
+    "gui.log.resume_found":     "找到先前进度，跳过已完成的 {count} 段。",
+    "gui.log.quota_paused":     "免费额度暂时用完，进度已保存；下次选择同一支视频并按开始即可继续。",
+    "gui.log.resume_selected":  "已自动选择未完成任务：{name}",
 
     # ── 同时推 UI 又落档的消息（落档那条永远是繁中，见 logtext.py）──
     "log.segment_error":        "第{index}段 上传Gemini -> {detail} | 重试 {attempt}/{total}",
