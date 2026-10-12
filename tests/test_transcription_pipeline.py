@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+import json
 
 from src import translator
 
@@ -56,3 +57,20 @@ def test_translation_cannot_change_cue_timing():
     result = translator._translate_cues(SimpleNamespace(models=_Models()), cues, "繁體中文")
 
     assert result == [{"start": 1.2, "end": 2.3, "text": "測試字幕"}]
+
+
+def test_large_translation_is_batched_and_keeps_every_timestamp():
+    from types import SimpleNamespace
+    sizes = []
+    class Models:
+        def generate_content(self, **kwargs):
+            payload = json.loads(kwargs['contents'].split('\n\n')[-1])
+            sizes.append(len(payload))
+            return SimpleNamespace(text=json.dumps({'translations':[
+                {'id':item['id'],'text':f"translated-{item['text']}"} for item in payload]}))
+    cues = [{'start':i*2,'end':i*2+1,'text':str(i)} for i in range(121)]
+    translated = translator._translate_cues(SimpleNamespace(models=Models()),cues,'zh-TW')
+    assert sizes == [50,50,21]
+    assert [c['text'] for c in translated] == [f'translated-{i}' for i in range(121)]
+    assert translated[-1]['start'] == 240
+    assert translated[-1]['end'] == 241

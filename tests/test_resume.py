@@ -48,13 +48,17 @@ def test_pending_jobs_lists_only_valid_latest_checkpoints(tmp_path, monkeypatch)
     assert jobs[0]["completed"] == 1
 
 
-def test_resume_prompt_selects_the_confirmed_file(app_factory, monkeypatch, tmp_path):
+def test_resume_history_selects_the_requested_file(app_factory, monkeypatch, tmp_path):
     video = tmp_path / "resume-me.mp3"
-    jobs = [{"path": str(video), "completed": 2, "updated_at": 1}]
-    monkeypatch.setattr(gui.resume, "pending_jobs", lambda model: jobs)
+    jobs = [{"path": str(video), "completed": 2, "updated_at": 1,
+             'total': 3, 'status': 'ready', 'model': 'test-model', 'chunk_seconds': 1800}]
+    monkeypatch.setattr(gui.resume, "pending_jobs", lambda *a, **k: jobs)
     monkeypatch.setattr(gui.messagebox, "askyesno", lambda *args, **kwargs: True)
 
     app, _, _ = app_factory("zh_tw")
     app._offer_pending_resume()
+    app.pending_tree.selection_set('0')
+    monkeypatch.setattr(app, '_start', lambda: None)
+    app._resume_pending_job()
 
     assert app.file_var.get() == str(video)

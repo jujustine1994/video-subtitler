@@ -8,6 +8,7 @@ import re
 import time
 import subprocess
 import json
+import copy
 from google import genai
 from google.genai import types
 
@@ -50,6 +51,9 @@ def _safe_err(e: Exception) -> str:
         code = getattr(e, "status_code", None)
     if code is not None:
         return f"{name}: HTTP {code}"
+    reason = getattr(e, 'subtitler_reason', None)
+    if reason:
+        return f'{name}: {reason}'
     return name
 
 
@@ -91,6 +95,58 @@ def renumber_srt(srt_text: str) -> str:
         else:
             result.append(line)
     return '\n'.join(result)
+
+
+def split_long_subtitles(srt_text: str, max_chars: int = 30) -> str:
+    """Split long display cues without changing text or their outer time bounds.
+
+    Internal times are length-weighted estimates, not acoustic alignment.
+    Punctuation and whitespace are preferred over hard character boundaries.
+    """
+    if max_chars < 1:
+        raise ValueError('max_chars must be positive')
+    pattern = re.compile(
+        r'^\d+\s*\n(\d{2,}:\d{2}:\d{2},\d{3}) --> '
+        r'(\d{2,}:\d{2}:\d{2},\d{3})\n([\s\S]*)$')
+    boundaries = set('.,!?;: \t\n\u3002\uff0c\uff01\uff1f\uff1b\uff1a\u3001')
+
+    def milliseconds(value):
+        h, m, tail = value.split(':')
+        s, ms = tail.split(',')
+        return ((int(h) * 60 + int(m)) * 60 + int(s)) * 1000 + int(ms)
+
+    output = []
+    changed = False
+    for block in re.split(r'\r?\n\s*\r?\n', srt_text.strip()):
+        match = pattern.match(block.replace('\r\n', '\n'))
+        if not match:
+            raise ValueError('Invalid SRT block')
+        start, end, text = match.groups()
+        parts = []
+        remaining = text
+        while len(remaining) > max_chars:
+            cut = max_chars
+            for position in range(max_chars, 0, -1):
+                if remaining[position - 1] in boundaries:
+                    cut = position
+                    break
+            parts.append(remaining[:cut])
+            remaining = remaining[cut:]
+        parts.append(remaining)
+        changed |= len(parts) > 1
+        begin, finish = milliseconds(start), milliseconds(end)
+        if finish - begin < len(parts):
+            raise ValueError('Insufficient milliseconds for subtitle split')
+        cursor, consumed = begin, 0
+        for position, part in enumerate(parts):
+            consumed += len(part)
+            stop = finish if position == len(parts) - 1 else min(
+                finish - (len(parts) - position - 1),
+                max(cursor + 1, begin + round((finish - begin) * consumed / len(text))))
+            output.append(f"{len(output) + 1}\n{_format_srt_time(cursor / 1000)} --> "
+                          f"{_format_srt_time(stop / 1000)}\n{part}")
+            cursor = stop
+    return '\n\n'.join(output) + '\n' if changed else srt_text
 
 
 def enforce_max_duration(srt_text: str, max_seconds: int = 5) -> str:
@@ -293,10 +349,24 @@ def _source_cues(words: list[dict], offset_seconds: float) -> list[dict]:
 
     # API 偶爾會給標點 0 秒長度或前後 cue 共用邊界。SRT 不能有零長度，
     # 且播放器對重疊 cue 的行為不一致；在不改變 start 的前提下修正 end。
-    for index, cue in enumerate(cues):
-        cue["end"] = max(cue["end"], cue["start"] + 0.1)
-        if index + 1 < len(cues) and cue["end"] >= cues[index + 1]["start"]:
-            cue["end"] = max(cue["start"] + 0.001, cues[index + 1]["start"] - 0.001)
+    normalised = []
+    for cue in cues:
+        cue['start'] = round(cue['start'], 3)
+        cue['end'] = round(max(cue['end'], cue['start'] + 0.1), 3)
+        if normalised:
+            previous = normalised[-1]
+            if cue['start'] < previous['start'] - 0.001:
+                error = RuntimeError('non-monotonic subtitle timestamps')
+                error.subtitler_reason = 'non_monotonic_timestamps'
+                raise error
+            if cue['start'] <= previous['start'] + 0.001:
+                previous['text'] = _join_words([{'text': previous['text']}, {'text': cue['text']}])
+                previous['end'] = max(previous['end'], cue['end'])
+                continue
+            if previous['end'] >= cue['start']:
+                previous['end'] = max(previous['start'] + 0.001, cue['start'] - 0.001)
+        normalised.append(cue)
+    cues = normalised
     _validate_cues(cues)
     return cues
 
@@ -305,13 +375,39 @@ def _validate_cues(cues: list[dict]) -> None:
     previous_end = -1.0
     for cue in cues:
         if cue["end"] <= cue["start"]:
-            raise RuntimeError("invalid non-positive subtitle duration")
+            error = RuntimeError("invalid non-positive subtitle duration")
+            error.subtitler_reason = 'non_positive_duration'
+            raise error
         if cue["start"] < previous_end:
-            raise RuntimeError("overlapping subtitle timestamps")
+            error = RuntimeError("overlapping subtitle timestamps")
+            error.subtitler_reason = 'overlapping_timestamps'
+            raise error
         previous_end = cue["end"]
 
 
-def _translate_cues(client, cues: list[dict], target_language: str) -> list[dict]:
+def _translate_cues(client, cues: list[dict], target_language: str,
+                    batch_cache=None, on_batch_saved=None, stop_event=None) -> list[dict]:
+    for start in range(0, len(cues), 50):
+        if stop_event is not None and stop_event.is_set():
+            raise StopRequested()
+        batch = cues[start:start+50]
+        key = f'{start}:{len(batch)}'
+        texts = batch_cache.get(key) if batch_cache is not None else None
+        if texts is None:
+            translated = _translate_batch(client, copy.deepcopy(batch), target_language)
+            texts = [item['text'] for item in translated]
+            if batch_cache is not None:
+                batch_cache[key] = texts
+                if on_batch_saved:
+                    on_batch_saved()
+        if len(texts) != len(batch):
+            raise RuntimeError('Invalid saved translation batch')
+        for cue, text in zip(batch, texts):
+            cue['text'] = text
+    return cues
+
+
+def _translate_batch(client, cues: list[dict], target_language: str) -> list[dict]:
     payload = [{"id": index, "text": cue["text"]} for index, cue in enumerate(cues)]
     prompt = (
         f"Translate each subtitle text into {target_language}. Return JSON only with a "
@@ -326,13 +422,20 @@ def _translate_cues(client, cues: list[dict], target_language: str) -> list[dict
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
+            response_schema={
+                'type':'OBJECT','properties':{'translations':{
+                    'type':'ARRAY','minItems':len(cues),'maxItems':len(cues),
+                    'items':{'type':'OBJECT','properties':{'id':{'type':'INTEGER'},
+                                                          'text':{'type':'STRING'}},
+                             'required':['id','text']}}},'required':['translations']},
+            temperature=0,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         ),
     )
     try:
         translated = json.loads(response.text)["translations"]
         by_id = {item["id"]: str(item["text"]).strip() for item in translated}
-        if set(by_id) != set(range(len(cues))) or any(not text for text in by_id.values()):
+        if len(translated) != len(cues) or set(by_id) != set(range(len(cues))) or any(not text for text in by_id.values()):
             raise ValueError("translation ids are incomplete")
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise RuntimeError("Gemini translation response is invalid; no subtitle was written") from exc
@@ -350,7 +453,7 @@ def _cues_to_srt(cues: list[dict]) -> str:
     return "\n\n".join(blocks) + ("\n" if blocks else "")
 
 
-def _call_gemini(client, audio_path: str, prompt: str, offset_seconds: float, on_log) -> str:
+def transcribe_segment(client, audio_path, offset_seconds, on_log=None):
     audio_file = client.files.upload(file=audio_path)
     while audio_file.state.name == "PROCESSING":
         time.sleep(2)
@@ -375,6 +478,84 @@ def _call_gemini(client, audio_path: str, prompt: str, offset_seconds: float, on
 
     # `prompt` 保留為 translate_segment 的資料契約與既有測試入口；轉錄模型不接受
     # 自由文字指令。翻譯只取得 ASR 文字與 cue id，無權更動 timestamp。
-    del prompt
-    cues = _source_cues(_extract_words(interaction), offset_seconds)
+    return _source_cues(_extract_words(interaction), offset_seconds)
+
+
+def _call_gemini(client, audio_path: str, prompt: str, offset_seconds: float, on_log) -> str:
+    cues = transcribe_segment(client, audio_path, offset_seconds, on_log)
     return _cues_to_srt(_translate_cues(client, cues, prompts.DEFAULT_TARGET_LANGUAGE))
+
+
+class StopRequested(Exception):
+    """Stop at a persisted stage boundary."""
+
+
+def process_saved_segment_with_retry(client, video_path, audio_path, index, offset,
+                                     state, stop_event=None, on_log=None):
+    for attempt in range(len(RETRY_DELAYS) + 1):
+        try:
+            return process_saved_segment(client, video_path, audio_path, index, offset,
+                                         state, stop_event, on_log)
+        except StopRequested:
+            raise
+        except Exception as exc:
+            if is_quota_error(exc) or not _is_retryable(exc) or attempt == len(RETRY_DELAYS):
+                raise
+            delay = RETRY_DELAYS[attempt]
+            if stop_event is not None:
+                if stop_event.wait(delay):
+                    raise StopRequested()
+            else:
+                time.sleep(delay)
+
+
+def process_saved_segment(client, video_path, audio_path, index, offset, state,
+                          stop_event=None, on_log=None):
+    from . import resume
+
+    def check_stop():
+        if stop_event is not None and stop_event.is_set():
+            raise StopRequested()
+
+    check_stop()
+    key = str(index)
+    if key in state["segments"]:
+        return state["segments"][key]
+    cues = state.get("transcripts", {}).get(key)
+    if cues is None:
+        try:
+            if hasattr(client, 'transcribe_saved'):
+                duration = resume.segment_plan(state)[index][1]
+                cues = client.transcribe_saved(video_path, index, offset, duration, state, stop_event)
+            else:
+                cues = transcribe_segment(client, audio_path, offset, on_log)
+        except Exception as exc:
+            exc.subtitler_stage = getattr(exc, 'subtitler_stage', 'transcription')
+            raise
+        try:
+            resume.record_transcript(video_path, state, index, cues)
+        except Exception as exc:
+            exc.subtitler_stage = 'save_transcript'
+            raise
+    if on_log and any(cue.get('timing_source') == 'segment' for cue in cues):
+        on_log(t('gui.log.segment_timing_fallback', index=index + 1))
+    check_stop()
+    try:
+        if hasattr(client, 'translate'):
+            translated = client.translate(copy.deepcopy(cues), source=video_path,
+                                          state=state,index=index,stop_event=stop_event)
+        elif not cues:
+            translated = []
+        else:
+            translated = _translate_cues(client, copy.deepcopy(cues), prompts.DEFAULT_TARGET_LANGUAGE)
+    except Exception as exc:
+        exc.subtitler_stage = 'translation'
+        raise
+    result = _cues_to_srt(translated)
+    try:
+        resume.record_segment(video_path, state, index, result)
+    except Exception as exc:
+        exc.subtitler_stage = 'save_subtitles'
+        raise
+    check_stop()
+    return result

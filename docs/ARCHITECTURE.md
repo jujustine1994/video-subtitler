@@ -1,5 +1,27 @@
 # ARCHITECTURE
 
+## Unfinished job list
+
+`pending_jobs(include_unavailable=True)` lists indexed checkpoints across folders
+and exposes total/completed segment counts and ready/missing/changed status.
+Unavailable source files remain in the index rather than losing resume discovery.
+The GUI displays every indexed job, restores selected provider/model/language/
+chunk settings, and invokes the existing start/resume path only on user action.
+The list refreshes on startup, manual refresh and worker completion/error.
+
+## Translation batch recovery (2026-10-12)
+
+`_translate_cues()` divides transcripts into at most 50 cues per call.
+The response schema constrains translation count and requires cue IDs/text;
+the parser also verifies IDs and nonempty translations. Cue times remain unchanged.
+Groq jobs persist successful batches in `translation_batches`, keyed by segment
+and batch position. Restarting an unfinished translation reuses both its saved
+transcript and completed batches, without resending audio.
+
+An actual 136-minute Japanese MP4 completed five balanced segments and generated
+1,175 cues with zero invalid ranges and zero overlaps. Its translation-only retry
+made zero ASR requests. This is structural validation, not manual lip-sync review.
+
 ## 工具總覽
 
 **Gemini 影片字幕翻譯工具**
@@ -122,6 +144,51 @@ uv pip install -r requirements_test.txt --python "$env:USERPROFILE\venvs\video-s
 
 ## 免費額度用盡後續跑
 
+Groq 時間軸：優先解析 words；倒退、缺失、超界時嘗試同一 HTTP 回應的 segments，
+仍有問題則拒絕輸出。回退 cue 標記 `timing_source: segment`，GUI 顯示提示。
+段落級 cue 保持完整起迄，不再經舊 5 秒硬截短。原始轉錄 JSON 不含請求 headers/key，
+在解析前保存至 checkpoint `groq_responses[index][trim_start:duration]`；
+重試或重開沿用相同修剪區間的回應，不再重傳，舊失敗請求未保存者仍需再送一次。
+
+新 checkpoint 有 `split_strategy: balanced` 與 `split_plan`（每段起點、長度）。
+`ceil(duration / chunk_seconds)` 決定段數，再平均分配，最後一段以原總長度收尾。
+GUI 音訊擷取與 Groq ownership 都讀同一份 plan，不再用 index * 1800 猜起點。
+舊 checkpoint 沒有新欄位時，`segment_plan()` 保留原固定切法，已保存原文不改位置。
+來源長度為小數秒時不產生縫隙或多餘尾段；保存的 plan 讀取時檢查連續性及覆蓋範圍。
+
+詞級時間戳相同起點導致重疊 cue 時先合併文字，再檢查時間；真正倒退仍拒絕且回報
+`non_monotonic_timestamps`。全部段落失敗不寫空字幕，也不覆寫既有 SRT。
+
+Groq 辨識前先執行現有 -80 dB 靜音檢查：純靜音回傳空字幕且不呼叫 API；
+只修剪片頭／片尾純靜音，保留 0.25 秒緩衝，將修剪起點加回原片段絕對 offset。
+中間靜音仍保留，避免重新建立拼接映射。`request_count`、`uploaded_seconds`
+記錄本次 client 呼叫量，供小額度驗證。測試腳本 `validate_workflow.py --timeline2h`
+走實際 GUI 工作流程並驗證重開後的 checkpoint 續跑。
+
+設定視窗現有處理／外觀／更新分頁。Key 仍只存 `.env`，分段分鐘與來源語言
+存為 `.tool_config.json` 的 `chunk_minutes`、`audio_language` 機器值；
+取消或直接關閉設定會還原未套用值。執行中的任務仍使用開始時固定的 client 與切段秒數。
+段落錯誤會以階段＋例外型別／HTTP 狀態碼落檔；時間超界僅記錄數值，避免紀錄請求與密鑰。
+
+Groq（2026-10-12）：`src/groq_provider.py` 實作 HTTP 音訊轉錄、大小上限二分切段、
+純靜音過濾與繁體字正規化。GUI 手動選定 provider，不自動備援；Groq 外語翻譯
+使用 Gemini，中文優先使用 OpenCC 規則轉字，不在本機執行 AI。
+來源語言可指定 auto/zh/en/ja/ko；Groq 任務 identity 包含模型、來源語言與輸出版本。
+Groq checkpoint 檔名加 identity hash，兩條服務進度共存。`groq_parts` 保存
+大小超限後的各子段結果，停止或 429 後不重傳已成功的子段。
+大段前後各保留 1 秒上下文，依 word midpoint 分配到原段時間窗口，避免重複；
+自動縮段內部仍可能切在台詞中間，需實片檢查。FFmpeg -80 dB 只判斷近乎純靜音，
+不等同 VAD，不能保證排除音樂上的幻覺。非法時間戳拒絕輸出、不偷偷截成正常字幕。
+
+2026-10-12：checkpoint 新增 `transcripts`，保存每段原始文字與絕對時間 cue；
+既有 `segments` 仍保存翻譯完成的 SRT。舊工作檔不需遷移，已完成 SRT 可沿用。
+轉錄回傳後立即原子存檔，翻譯使用副本，不修改保存的原文；翻譯失敗後重開
+只需重跑翻譯，省去音訊擷取與再次上傳。第一段開始前也會建立空工作檔。
+
+GUI 的停止事件會在階段邊界檢查。API 請求已送出時等其返回、保存後停止；
+正常關閉會先詢問，透過 UI queue 收到工作結束通知才 destroy 視窗。
+強制終止、斷電或永久不返回的請求仍無法保存尚未收到的結果。
+
 每支影片的已完成段落會立即存成影片旁的
 `<影片檔名>.<副檔名>.subtitler.resume.json`。這不是字幕成品，而是本機工作檔，
 已列入 `.gitignore`。
@@ -131,7 +198,7 @@ uv pip install -r requirements_test.txt --python "$env:USERPROFILE\venvs\video-s
 - 再次選擇**同一路徑、未變動**的影片並按開始時，`resume.load()` 會跳過已完成段落，從第一個未完成段繼續。
 - checkpoint 會核對絕對路徑、檔案大小、修改時間、影片時長、切段秒數與模型名稱；任一不同即拒絕沿用，避免混入不同影片或模型的結果。
 - 完整成功並寫出 `.srt` 後才刪除 checkpoint。一般段落失敗也會保留已完成進度，供後續重跑或重新開始使用。
-- 專案根目錄的 `.subtitler_resume_index.json` 只記錄 checkpoint 的絕對路徑與最後更新時間（同樣不版控）。啟動時會驗證清單，提示最近一份有效工作；使用者確認後自動填入來源檔案欄位，仍須按「開始翻譯」才會呼叫 API。
+- 專案根目錄的 `.subtitler_resume_index.json` 記錄來源路徑、模型與最後更新時間（不版控）。啟動時會驗證並列出所有未完成工作；選取後按「繼續處理」會還原設定並續跑。檔案不存在或已變更會保留紀錄但禁止續跑；只開啟程式不會呼叫 API。
 
 ---
 

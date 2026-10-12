@@ -1,2 +1,4 @@
 google-genai
+httpx
+opencc-python-reimplemented
 python-dotenv==1.2.2

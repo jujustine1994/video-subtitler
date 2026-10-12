@@ -20,6 +20,7 @@ tests/test_i18n.py 的「不得寫死中日文」那條測試涵蓋，本檔則�
 from __future__ import annotations
 
 LOG_TEXT: dict[str, str] = {
+    'stage_failed': '第{index}段 | 階段 {stage} | {detail}',
     # 任務起始行（唯一有完整日期的行，關鍵設定塞同一行）
     "task_start_full":  "轉錄 {name} | {model} | {count}段",
     "task_start_retry": "補跑 {name} | {model} | {count}段",

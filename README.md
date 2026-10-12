@@ -93,11 +93,80 @@ Automatically generate Traditional Chinese `.srt` subtitle files for videos with
 7. Enter or confirm your API Key
 8. Wait for processing to finish — the `.srt` file will appear next to the video
 
+### Gemini / Groq selection
+
+The main window's Unfinished jobs section lists all indexed checkpoints across
+folders, including progress, provider/model and update time. Select a job and
+click Resume selected to restore its settings and continue. Startup only loads
+the list; it does not call an API. Missing/changed source files are shown but
+blocked from resuming, and their saved progress is retained. Restore the original
+file and refresh. Successfully exported jobs leave the list automatically.
+
+Both providers split output cues longer than 30 characters, preferably at
+punctuation or whitespace. Short cues stay short; text is not summarized.
+Split cues divide the original time interval proportionally by text length;
+these internal boundaries are estimates, not a new speech-alignment pass.
+
+Long-file validation: a 136-minute Japanese MP4 completed all five balanced
+segments and produced 1,175 cues, with no invalid time ranges or overlaps.
+This checks the pipeline and timestamp structure, not human-reviewed lip sync.
+Translation runs in batches of at most 50 cues with a structured JSON response.
+Successful translation batches are checkpointed; retrying a failed translation
+reuses the saved transcript and batches without uploading the audio again.
+
+API keys, segment length and source audio language are now in Settings → Processing
+settings. The main screen keeps only file selection, service/model and progress.
+Failure messages include the stage and a sanitized error type/HTTP code; numeric
+timestamp errors include the offending bounds. Logs never include API keys.
+
+Select the service manually; the app never switches providers automatically.
+For Groq, `whisper-large-v3` is the default quality option; Turbo is also available.
+Choose 10 or 30 minutes per segment (default 30). Groq extracts 16 kHz mono FLAC,
+adds one-second context around segment boundaries, and halves oversized uploads
+until they are below 24 MB. Completed subparts are checkpointed too.
+
+New jobs calculate `ceil(total duration / target)` segments and divide the duration
+equally. For example, 100 minutes becomes four 25-minute segments, not 30+30+30+10.
+The actual segment ranges are saved in the checkpoint. Older unfinished jobs keep
+their fixed boundaries; the new policy never reassigns their already saved subtitles.
+If all segments fail, the app retains the checkpoint and does not write or overwrite
+an empty SRT. Duplicate-start subtitle cues are merged before timestamp validation.
+
+If Groq word timestamps go backwards, valid segment timestamps from the same
+response are used instead, with an on-screen notice. This does not switch services
+or upload audio again. Raw transcription responses are checkpointed before parsing
+so a failed parse can be retried without another API request. Invalid segment
+timestamps still stop that segment. Segment-timed captions can last over five seconds;
+the app preserves their ends instead of silently cutting them short.
+
+Set the Groq audio language to `zh` for Chinese recordings, `en` for English,
+`ja` for Japanese, or `ko` for Korean; `auto` can misdetect long silent recordings.
+Chinese uses local OpenCC text conversion (no local AI). Other languages still
+need a Gemini key for Traditional Chinese translation.
+
+Both keys are stored only in the ignored local `.env`. Groq jobs use separate
+checkpoint files per model and source-language setting; Gemini checkpoints remain
+compatible. Changing service starts/resumes that service's own job.
+
+Groq can hallucinate words during silence. The app rejects out-of-range timestamps
+and excludes words in near-digital-silence intervals detected by FFmpeg (-80 dB).
+Music and quiet speech still require review. The short validation sample passed;
+an artificial two-hour sparse timeline also passed, but a complete real film has not
+been validated. Near-digital-silence-only chunks are now skipped without API calls.
+Leading/trailing silence is trimmed before upload, with its original start offset
+preserved. This uses FFmpeg, not local AI.
+
 ### Resuming an unfinished job
 
+Transcription and translation are saved separately. If translation fails, the next run
+reuses the saved original text and timestamps without uploading audio again. Use
+“Stop and save” to stop at the next saved stage. Closing the window during processing
+asks whether to wait for the current request to finish and save before exiting.
+Force quitting or powering off can still lose the request that has not returned.
+
 You can close the app at any time after a segment has completed. On the next launch,
-the app detects the most recently saved unfinished job and asks whether to select that
-source file automatically. Confirm it, then click Start to continue from the first
+the app lists all indexed unfinished jobs. Select one and click Resume selected
+to restore its settings and continue from the first
 unfinished segment. The video must remain at the same path and be unchanged.
 
 ### UI language is not subtitle language
@@ -120,6 +189,6 @@ is a maintenance tool, so it must not follow the end user's language.
 - **30-minute rule**: Audio is uploaded in 30-minute segments. A 90-minute video takes 3 sequential passes (not parallel)
 - **API quota**: Free-tier Gemini has a daily request limit. When quota is exhausted, progress is kept in `<video>.subtitler.resume.json`; select the same unchanged video later and click Start to continue. The checkpoint is removed after a fully successful run
 - **Safety filtering**: Explicit or sensitive content may be blocked by Google's safety filters
-- **Internet required**: Audio is uploaded to Google Cloud for processing
+- **Internet required**: Audio is uploaded to the manually selected Gemini or Groq service
 - **Privacy**: Free-tier usage may be used by Google to improve their services
 - **Quality**: Speech recognition can still mishear names and technical terminology. Review important subtitles, especially finance, medical, legal, or technical recordings

@@ -16,6 +16,7 @@ from tkinter import ttk, messagebox, scrolledtext, filedialog
 from dotenv import load_dotenv, set_key
 
 from . import i18n, resume, translator, update_checker
+from .groq_provider import GroqProvider, MODELS as GROQ_MODELS
 from .config import load_config, save_config
 from .i18n import t
 from .logtext import LOG_TEXT
@@ -135,24 +136,46 @@ class SubtitlerApp:
         i18n.set_lang(self.cfg.get("language"))
 
         self.root.title(t("gui.win.title"))
-        self.root.geometry("560x680")
+        self.root.geometry("860x940")
         self.root.resizable(True, True)
 
         self.msg_queue: queue.Queue = queue.Queue()
         self.is_running = False
+        self._stop_event = threading.Event()
+        self._close_pending = False
+        self._resume_state = None
+        self.api_var = tk.StringVar()
+        self.groq_key_var = tk.StringVar()
+        self.save_key_var = tk.BooleanVar(value=True)
+        chunk = str(self.cfg.get('chunk_minutes', '30'))
+        audio_language = self.cfg.get('audio_language', 'auto')
+        self.chunk_var = tk.StringVar(value=chunk if chunk in ('10', '30') else '30')
+        self.audio_language_var = tk.StringVar(
+            value=audio_language if audio_language in ('auto', 'zh', 'en', 'ja', 'ko') else 'auto')
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._current_theme = self.cfg.get("theme", "light")
 
         # 補跑所需的執行期狀態
         self._video_path = ""
         self._client = None
+        self._model_identity = translator.MODEL_NAME
+        self._chunk_seconds = translator.CHUNK_DURATION
         self._segments = {}       # index -> srt_text or None
         self._segment_offsets = {}  # index -> start_time
+        self._segment_durations = {}
         self._failed_vars = {}    # index -> tk.BooleanVar()
         self._output_path = ""
         self._task_start = 0.0    # 任務計時起點（三段式結果行用）
 
         self._build_ui()
         self._apply_theme(self._current_theme)
+        self.root.update_idletasks()
+        width = min(max(860, self.root.winfo_reqwidth() + 32),
+                    self.root.winfo_screenwidth() - 60)
+        height = min(max(940, self.root.winfo_reqheight() + 40),
+                     self.root.winfo_screenheight() - 100)
+        self.root.geometry(f'{width}x{height}')
+        self.root.minsize(min(width, 760), min(height, 800))
         self._load_api_key()
         self._poll_queue()
         self.root.after(150, self._offer_pending_resume)
@@ -180,25 +203,29 @@ class SubtitlerApp:
         )
 
         # === API Key ===
-        frame_api = ttk.LabelFrame(self.root, text=" Gemini API Key ", padding=8)
+        frame_api = ttk.LabelFrame(self.root, text=t('gui.frame.service'), padding=8)
         frame_api.grid(row=1, column=0, sticky="ew", **pad)
-
-        api_row = tk.Frame(frame_api)
-        api_row.pack(anchor="w")
-        self.api_var = tk.StringVar()
-        self.api_entry = ttk.Entry(api_row, textvariable=self.api_var, width=40, show="•")
-        self.api_entry.pack(side="left", padx=(0, 8))
-        ttk.Button(api_row, text=t("gui.btn.show_key"), width=5, command=self._toggle_api_show).pack(
-            side="left", padx=(0, 8)
-        )
-        self.save_key_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(api_row, text=t("gui.chk.remember_key"), variable=self.save_key_var).pack(side="left")
-
-        tk.Label(
-            frame_api,
-            text=t("gui.lbl.api_notice"),
-            foreground="gray", font=("Microsoft JhengHei", 11),
-        ).pack(anchor="w", pady=(4, 0))
+        service_row = ttk.Frame(frame_api)
+        service_row.pack(fill='x')
+        self.provider_var = tk.StringVar(value='Gemini')
+        self.provider_box = ttk.Combobox(service_row, textvariable=self.provider_var,
+                                        values=['Gemini', 'Groq'], state='readonly', width=9)
+        self.provider_box.pack(side='left')
+        self.groq_model_var = tk.StringVar(value=GROQ_MODELS[0])
+        self.model_display_var = tk.StringVar()
+        self.groq_model_box = ttk.Combobox(service_row, textvariable=self.model_display_var,
+                                          state='readonly', width=33)
+        self.groq_model_box.pack(side='left', fill='x', expand=True, padx=4)
+        self.provider_box.bind('<<ComboboxSelected>>', self._on_provider_selected)
+        self.groq_model_box.bind('<<ComboboxSelected>>', self._on_model_selected)
+        self._refresh_model_choices()
+        translation_hint = ttk.Label(frame_api, text=t('gui.lbl.translation_notice'),
+                                     wraplength=700, justify='left')
+        translation_hint.pack(anchor='w')
+        def resize_hints(event):
+            for label in (translation_hint,):
+                label.config(wraplength=max(200, event.width - 32))
+        frame_api.bind('<Configure>', resize_hints)
 
         # === 開始按鈕 ===
         frame_btn = tk.Frame(self.root)
@@ -207,6 +234,9 @@ class SubtitlerApp:
             frame_btn, text=t("gui.btn.start"), command=self._start, width=20
         )
         self.btn_start.pack(side="left", ipady=6)
+        self.btn_stop = ttk.Button(frame_btn, text=t("gui.btn.stop"),
+                                   command=self._request_stop, state="disabled")
+        self.btn_stop.pack(side="left", padx=6, ipady=6)
         ttk.Button(
             frame_btn, text="⚙", command=self._open_settings, width=4
         ).pack(side="left", ipady=6, padx=(8, 0))
@@ -271,6 +301,30 @@ class SubtitlerApp:
         self.log_text.config(state="disabled")
 
         self._build_status_bar()
+        history = ttk.LabelFrame(self.root, text=t('gui.history.title'), padding=8)
+        history.grid(row=5, column=0, sticky='ew', padx=14, pady=(0, 6))
+        history.columnconfigure(0, weight=1)
+        columns = ('file', 'service', 'progress', 'updated', 'status')
+        self.pending_tree = ttk.Treeview(history, columns=columns, show='headings', height=3,
+                                        selectmode='browse')
+        for column, width in zip(columns, (240, 170, 70, 130, 120)):
+            self.pending_tree.heading(column, text=t('gui.history.' + column))
+            self.pending_tree.column(column, width=width, minwidth=50)
+        self.pending_tree.grid(row=0, column=0, sticky='ew')
+        scroll = ttk.Scrollbar(history, orient='vertical', command=self.pending_tree.yview)
+        scroll.grid(row=0, column=1, sticky='ns')
+        self.pending_tree.configure(yscrollcommand=scroll.set)
+        horizontal = ttk.Scrollbar(history, orient='horizontal', command=self.pending_tree.xview)
+        horizontal.grid(row=1, column=0, sticky='ew')
+        self.pending_tree.configure(xscrollcommand=horizontal.set)
+        controls = ttk.Frame(history)
+        controls.grid(row=2, column=0, sticky='ew', pady=(4, 0))
+        ttk.Button(controls, text=t('gui.history.resume'), command=self._resume_pending_job).pack(side='left')
+        ttk.Button(controls, text=t('gui.history.refresh'), command=self._refresh_pending_jobs).pack(side='left', padx=6)
+        self.pending_path_var = tk.StringVar()
+        ttk.Label(history, textvariable=self.pending_path_var, wraplength=680).grid(row=3, column=0, sticky='w')
+        self.pending_tree.bind('<<TreeviewSelect>>', self._pending_selection_changed)
+        self._pending_jobs = {}
 
     def _build_status_bar(self):
         sep = ttk.Separator(self.root, orient="horizontal")
@@ -318,13 +372,30 @@ class SubtitlerApp:
     def _open_settings(self):
         win = tk.Toplevel(self.root)
         win.title(t("gui.dlg.settings_title"))
-        win.resizable(False, False)
+        win.resizable(True, True)
+        win.geometry('800x850')
         win.grab_set()
         self.settings_win = win
+        variables = (self.api_var, self.groq_key_var, self.save_key_var,
+                     self.chunk_var, self.audio_language_var)
+        before = [var.get() for var in variables]
+        def cancel():
+            for var, value in zip(variables, before):
+                var.set(value)
+            win.destroy()
+        win.protocol('WM_DELETE_WINDOW', cancel)
+        notebook = ttk.Notebook(win)
+        notebook.pack(fill='both', expand=True, padx=12, pady=12)
+        processing = ttk.Frame(notebook)
+        appearance = ttk.Frame(notebook)
+        updates = ttk.Frame(notebook)
+        notebook.add(processing, text=t('gui.frame.processing_settings'))
+        notebook.add(appearance, text=t('gui.lbl.theme'))
+        notebook.add(updates, text=t('gui.frame.update'))
+        self._build_processing_settings(processing)
+        self._build_language_row(appearance)
 
-        self._build_language_row(win)
-
-        frame = ttk.Frame(win, padding=16)
+        frame = ttk.Frame(appearance, padding=16)
         frame.pack()
         ttk.Label(frame, text=t("gui.lbl.theme")).pack(anchor="w", pady=(0, 10))
 
@@ -335,15 +406,21 @@ class SubtitlerApp:
             )
 
         # ---- 版本更新 ----
-        self._build_update_section(win)
+        self._build_update_section(updates)
 
         def _apply():
+            if self.save_key_var.get():
+                for name, var in (('GEMINI_API_KEY', self.api_var), ('GROQ_API_KEY', self.groq_key_var)):
+                    if var.get().strip():
+                        set_key(ENV_PATH, name, var.get().strip())
             self._apply_theme(theme_var.get())
             new_lang = self._selected_lang_code()
             lang_changed = new_lang != self._lang_saved_code
             # theme 的值是機器碼（light/dark/financial），language 是語言代號，
             # 兩者都不是畫面上顯示的字——顯示名走 i18n，存檔值永遠固定。
-            self._save_config({"theme": theme_var.get(), "language": new_lang})
+            self._save_config({"theme": theme_var.get(), "language": new_lang,
+                               'chunk_minutes': self.chunk_var.get(),
+                               'audio_language': self.audio_language_var.get()})
             win.destroy()
             # 只有語言真的變更才打擾使用者——改主題不該跳重啟視窗
             if lang_changed:
@@ -352,7 +429,33 @@ class SubtitlerApp:
         btn_row = ttk.Frame(win)
         btn_row.pack(pady=(0, 16))
         ttk.Button(btn_row, text=t("gui.btn.apply"), command=_apply, width=10).pack(side="left", padx=4, ipady=4)
-        ttk.Button(btn_row, text=t("gui.btn.cancel"), command=win.destroy, width=10).pack(side="left", padx=4, ipady=4)
+        ttk.Button(btn_row, text=t("gui.btn.cancel"), command=cancel, width=10).pack(side="left", padx=4, ipady=4)
+
+    def _build_processing_settings(self, parent):
+        frame = ttk.LabelFrame(parent, text='API Keys', padding=12)
+        frame.pack(fill='x', padx=16, pady=10)
+        for name, var in (('Gemini', self.api_var), ('Groq', self.groq_key_var)):
+            row = ttk.Frame(frame)
+            row.pack(fill='x', pady=4)
+            ttk.Label(row, text=name, width=8).pack(side='left')
+            entry = ttk.Entry(row, textvariable=var, show='•', width=30)
+            entry.pack(side='left', fill='x', expand=True)
+            if name == 'Gemini':
+                self.api_entry = entry
+        ttk.Checkbutton(frame, text=t('gui.chk.remember_key'), variable=self.save_key_var).pack(anchor='w')
+        ttk.Label(frame, text=t('gui.lbl.api_notice'), wraplength=650).pack(anchor='w')
+        options = ttk.LabelFrame(parent, text=t('gui.frame.processing_settings'), padding=12)
+        options.pack(fill='x', padx=16, pady=6)
+        row = ttk.Frame(options)
+        row.pack(fill='x')
+        self.chunk_box = ttk.Combobox(row, textvariable=self.chunk_var, values=['10', '30'],
+                                     width=4, state='readonly')
+        self.chunk_box.pack(side='left')
+        ttk.Label(row, text=t('gui.lbl.minutes')).pack(side='left', padx=6)
+        ttk.Label(row, text=t('gui.lbl.audio_language')).pack(side='left')
+        ttk.Combobox(row, textvariable=self.audio_language_var, values=['auto','zh','en','ja','ko'],
+                     width=6, state='readonly').pack(side='left')
+        ttk.Label(options, text=t('gui.lbl.audio_language_hint'), wraplength=650).pack(anchor='w')
 
     # ---- 版本更新 ----
     #
@@ -544,6 +647,9 @@ class SubtitlerApp:
         key = os.getenv("GEMINI_API_KEY", "")
         if key:
             self.api_var.set(key)
+        groq_key = os.getenv('GROQ_API_KEY', '')
+        if groq_key:
+            self.groq_key_var.set(groq_key)
 
     # ---- 檔案選取 ----
 
@@ -558,21 +664,93 @@ class SubtitlerApp:
         if path:
             self.file_var.set(path)
 
+    def _refresh_model_choices(self):
+        groq = self.provider_var.get() == 'Groq'
+        models = GROQ_MODELS if groq else (translator.ASR_MODEL_NAME,)
+        self._model_display_to_code = {
+            (t('gui.model.recommended', model=model) if i == 0 else model): model
+            for i, model in enumerate(models)
+        }
+        self.groq_model_box['values'] = tuple(self._model_display_to_code)
+        selected = self.groq_model_var.get() if groq else translator.ASR_MODEL_NAME
+        label = next((label for label, code in self._model_display_to_code.items()
+                      if code == selected), next(iter(self._model_display_to_code)))
+        self.model_display_var.set(label)
+
+    def _on_provider_selected(self, event=None):
+        self.groq_model_var.set(GROQ_MODELS[0])
+        self._refresh_model_choices()
+
+    def _on_model_selected(self, event=None):
+        if self.provider_var.get() == 'Groq':
+            self.groq_model_var.set(self._model_display_to_code[self.model_display_var.get()])
+
     def _offer_pending_resume(self):
-        """啟動時主動提示最近一份有效 checkpoint，確認後直接填入影片欄位。"""
-        jobs = resume.pending_jobs(translator.MODEL_NAME)
-        if not jobs:
+        """Populate all unfinished jobs without starting API calls."""
+        self._refresh_pending_jobs()
+
+    def _refresh_pending_jobs(self):
+        selected = self.pending_tree.selection()
+        previous = self._pending_jobs.get(selected[0]) if selected else None
+        self.pending_tree.delete(*self.pending_tree.get_children())
+        self._pending_jobs = {}
+        for index, job in enumerate(resume.pending_jobs(None, include_unavailable=True)):
+            key = str(index)
+            self._pending_jobs[key] = job
+            model = job['model']
+            service = 'Groq / ' + model.split(':')[1] if model.startswith('groq:') else 'Gemini'
+            self.pending_tree.insert('', 'end', iid=key, values=(
+                os.path.basename(job['path']), service, f"{job['completed']}/{job['total']}",
+                time.strftime('%m-%d %H:%M', time.localtime(job['updated_at'])),
+                t('gui.history.' + job['status'])))
+            if previous and (previous['path'], previous['model']) == (job['path'], job['model']):
+                self.pending_tree.selection_set(key)
+        self._pending_selection_changed()
+
+    def _pending_selection_changed(self, event=None):
+        selected = self.pending_tree.selection()
+        job = self._pending_jobs.get(selected[0]) if selected else None
+        self.pending_path_var.set(job['path'] if job else '')
+
+    def _resume_pending_job(self):
+        if self.is_running:
             return
-        job = jobs[0]
-        if messagebox.askyesno(
-            t("gui.dlg.resume_title"),
-            t("gui.msg.resume_found", name=os.path.basename(job["path"]),
-              count=job["completed"]),
-        ):
+        self._refresh_pending_jobs()
+        selected = self.pending_tree.selection()
+        job = self._pending_jobs.get(selected[0]) if selected else None
+        if not job:
+            return
+        if job['status'] != 'ready':
+            messagebox.showwarning(t('gui.history.title'), t('gui.history.unavailable'))
+            return
+        if job:
             self.file_var.set(job["path"])
+            model = job.get('model', translator.MODEL_NAME)
+            if model.startswith('groq:'):
+                self.provider_var.set('Groq')
+                self.groq_model_var.set(model.split(':')[1])
+                self.audio_language_var.set(model.split(':')[2])
+            else:
+                self.provider_var.set('Gemini')
+            self._refresh_model_choices()
+            self.chunk_var.set(str(job.get('chunk_seconds', 1800) // 60))
             self._log(t("gui.log.resume_selected", name=os.path.basename(job["path"])))
+            self._start()
 
     # ---- 執行：開始翻譯 ----
+
+    def _request_stop(self):
+        self._stop_event.set()
+        self.btn_stop.config(state="disabled")
+        self._set_status(t("gui.status.stopping"), "info")
+
+    def _on_close(self):
+        if not self.is_running:
+            self.root.destroy()
+            return
+        if messagebox.askyesno(t("gui.dlg.resume_title"), t("gui.msg.close_running")):
+            self._close_pending = True
+            self._request_stop()
 
     def _start(self):
         video_path = self.file_var.get().strip()
@@ -581,11 +759,16 @@ class SubtitlerApp:
             return
 
         api_key = self.api_var.get().strip()
-        if not api_key:
+        provider = self.provider_var.get()
+        groq_key = self.groq_key_var.get().strip()
+        if (provider == 'Gemini' and not api_key) or (provider == 'Groq' and not groq_key):
             messagebox.showerror(t("gui.dlg.error_title"), t("gui.msg.no_api_key"))
             return
         if self.save_key_var.get():
-            set_key(ENV_PATH, "GEMINI_API_KEY", api_key)
+            if api_key:
+                set_key(ENV_PATH, "GEMINI_API_KEY", api_key)
+            if groq_key:
+                set_key(ENV_PATH, "GROQ_API_KEY", groq_key)
 
         self.frame_retry.grid_remove()
         for w in self.retry_checks_frame.winfo_children():
@@ -602,7 +785,14 @@ class SubtitlerApp:
         self._set_status(t("gui.status.running"), "info")
 
         self._video_path = video_path
-        self._client = translator.make_client(api_key)
+        self._stop_event.clear()
+        self.btn_stop.config(state="normal")
+        gemini = translator.make_client(api_key) if api_key else None
+        self._client = (GroqProvider(groq_key, self.groq_model_var.get(), gemini,
+                                    self.audio_language_var.get())
+                        if provider == 'Groq' else gemini)
+        self._model_identity = getattr(self._client, 'identity', translator.MODEL_NAME)
+        self._chunk_seconds = int(self.chunk_var.get()) * 60
         self._segments = {}
         self._segment_offsets = {}
         self._resume_state = None
@@ -617,20 +807,15 @@ class SubtitlerApp:
             self._log(t("gui.log.duration", minutes=int(duration // 60),
                         seconds=int(duration % 60)))
 
-            num_segments = int(duration // translator.CHUNK_DURATION) + 1
-            indices = []
-            for i in range(num_segments):
-                start_time = i * translator.CHUNK_DURATION
-                if start_time >= duration:
-                    break
-                indices.append(i)
-                self._segment_offsets[i] = start_time
-
             self._resume_state = resume.load(
-                self._video_path, duration, translator.CHUNK_DURATION, translator.MODEL_NAME
+                self._video_path, duration, self._chunk_seconds, self._model_identity
             ) or resume.create(
-                self._video_path, duration, translator.CHUNK_DURATION, translator.MODEL_NAME
+                self._video_path, duration, self._chunk_seconds, self._model_identity
             )
+            plan = resume.segment_plan(self._resume_state)
+            indices = list(range(len(plan)))
+            self._segment_offsets = {i: start for i,(start,length) in enumerate(plan)}
+            self._segment_durations = {i: length for i,(start,length) in enumerate(plan)}
             self._segments = {int(i): content for i, content in self._resume_state["segments"].items()
                               if isinstance(content, str)}
             pending = [i for i in indices if i not in self._segments]
@@ -638,13 +823,16 @@ class SubtitlerApp:
             # ---- 任務起始：一行，關鍵設定（模型、段數）塞同一行 ----
             _write_log_header(LOG_TEXT["task_start_full"].format(
                 name=os.path.basename(self._video_path),
-                model=translator.MODEL_NAME, count=len(pending),
+                model=self._model_identity, count=len(pending),
             ))
             self._log(t("gui.log.total_segments", count=len(pending)))
             if self._segments:
                 self._log(t("gui.log.resume_found", count=len(self._segments)))
             self._run_segments(pending, len(indices), completed_count=len(self._segments))
             self._finish_run()
+        except translator.StopRequested:
+            self._set_status(t("gui.status.stopped"), "info")
+            self._done(None, [])
         except translator.QuotaExhaustedError:
             self._log(t("gui.log.quota_paused"))
             self._set_status(t("gui.status.quota_paused"), "error")
@@ -659,15 +847,26 @@ class SubtitlerApp:
     def _run_segments(self, indices, total_for_progress, completed_count=0):
         done_count = completed_count
         for i in indices:
+            if self._stop_event.is_set():
+                raise translator.StopRequested()
             start_time = self._segment_offsets[i]
             self._log(t("gui.log.segment_start", index=i + 1,
                         minutes=int(start_time // 60)))
             temp_audio = os.path.join(SCRIPT_DIR, f"temp_seg_{i}.mp3")
             try:
-                translator.extract_audio_segment(
-                    self._video_path, start_time, translator.CHUNK_DURATION, temp_audio
-                )
-                srt_seg = translator.translate_segment(
+                if self._resume_state is not None:
+                    if (not hasattr(self._client, 'transcribe_saved')
+                            and str(i) not in self._resume_state.get("transcripts", {})):
+                        translator.extract_audio_segment(
+                            self._video_path, start_time, self._segment_durations[i], temp_audio)
+                    srt_seg = translator.process_saved_segment_with_retry(
+                        self._client, self._video_path, temp_audio, i, start_time,
+                        self._resume_state, self._stop_event,
+                        on_log=lambda m: self._log(m))
+                else:
+                    translator.extract_audio_segment(
+                        self._video_path, start_time, translator.CHUNK_DURATION, temp_audio)
+                    srt_seg = translator.translate_segment(
                     self._client, temp_audio, i, start_time,
                     # 一般進度訊息只推 UI，不落檔
                     on_log=lambda m: self._log(m),
@@ -681,14 +880,17 @@ class SubtitlerApp:
                         ui_msg, "ERROR", log_msg=log_msg),
                 )
                 self._segments[i] = srt_seg
-                if self._resume_state is not None:
-                    resume.record_segment(self._video_path, self._resume_state, i, srt_seg)
                 self._log(t("gui.log.segment_done", index=i + 1))
+            except translator.StopRequested:
+                raise
             except Exception as e:
                 self._segments[i] = None
                 # ERROR 行已由 translator 的 on_error 落檔（含 status code）；此處只推 UI，不寫 str(e)
-                self._log(t("gui.log.segment_failed", index=i + 1,
-                            error=type(e).__name__))
+                detail = translator._safe_err(e)
+                stage = getattr(e, 'subtitler_stage', 'prepare')
+                self._log(t("gui.log.stage_failed", index=i + 1, stage=stage, detail=detail),
+                          'ERROR', log_msg=LOG_TEXT['stage_failed'].format(
+                              index=i + 1, stage=stage, detail=detail))
                 if translator.is_quota_error(e):
                     raise translator.QuotaExhaustedError() from e
             finally:
@@ -700,6 +902,13 @@ class SubtitlerApp:
                                  total=total_for_progress))
 
     def _finish_run(self):
+        if self._segments and all(value is None for value in self._segments.values()):
+            failed = sorted(self._segments)
+            self._log(t('gui.log.all_failed'))
+            self._set_status(t('gui.status.done_with_failures', count=len(failed)), 'error')
+            self._log_task_result(ok=False)
+            self._done(None, failed)
+            return
         self._merge_and_write()
         failed = sorted(i for i, v in self._segments.items() if v is None)
         if failed:
@@ -708,7 +917,7 @@ class SubtitlerApp:
             self._set_status(t("gui.status.done_with_failures", count=len(failed)), "error")
         else:
             self._set_status(t("gui.status.done"), "success")
-            resume.discard(self._video_path)
+            resume.discard(self._video_path, self._model_identity)
         # ---- 任務結束：成功/失敗 + 耗時 ----
         self._log_task_result(ok=not failed)
         self._done(self._output_path, failed)
@@ -723,7 +932,11 @@ class SubtitlerApp:
 
     def _merge_and_write(self):
         ordered = [self._segments[i] for i in sorted(self._segments) if self._segments[i] is not None]
-        merged = translator.renumber_srt(translator.enforce_max_duration("\n".join(ordered)))
+        merged = '\n'.join(ordered)
+        if self._resume_state is None:
+            merged = translator.enforce_max_duration(merged)
+        merged = translator.split_long_subtitles(merged)
+        merged = translator.renumber_srt(merged)
         self._output_path = os.path.splitext(self._video_path)[0] + ".srt"
         with open(self._output_path, "w", encoding="utf-8") as f:
             f.write(merged)
@@ -738,6 +951,8 @@ class SubtitlerApp:
             return
 
         self.btn_retry.config(state="disabled")
+        self._stop_event.clear()
+        self.btn_stop.config(state="normal")
         self.is_running = True
         self.btn_start.config(state="disabled")
         self._set_status(t("gui.status.retrying"), "info")
@@ -757,6 +972,12 @@ class SubtitlerApp:
         try:
             self._run_segments(selected, len(selected))
             self._finish_run()
+        except translator.StopRequested:
+            self._set_status(t("gui.status.stopped"), "info")
+            self._done(None, [])
+        except translator.QuotaExhaustedError:
+            self._set_status(t("gui.status.quota_paused"), "error")
+            self._done(None, [])
         except Exception as e:
             self._log(f"\n[ERROR] {type(e).__name__}", "FAIL")
             self._log_task_result(ok=False)
@@ -811,6 +1032,11 @@ class SubtitlerApp:
                 elif msg_type == "done":
                     output_path, failed_indices = data
                     self.is_running = False
+                    self.btn_stop.config(state="disabled")
+                    self._refresh_pending_jobs()
+                    if self._close_pending:
+                        self.root.destroy()
+                        return
                     self.btn_start.config(state="normal")
                     self.btn_retry.config(state="normal")
                     self._show_failed_segments(failed_indices)
@@ -819,6 +1045,11 @@ class SubtitlerApp:
                                             t("gui.msg.done", path=output_path))
                 elif msg_type == "fatal":
                     self.is_running = False
+                    self._refresh_pending_jobs()
+                    self.btn_stop.config(state="disabled")
+                    if self._close_pending:
+                        self.root.destroy()
+                        return
                     self.btn_start.config(state="normal")
                     self.progress_label.config(text=t("gui.status.fatal_label"))
                     self._set_status(t("gui.status.fatal", error=data), "error")

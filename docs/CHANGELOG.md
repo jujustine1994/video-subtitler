@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## 2026-10-12 — Multi-job resume list
+
+- Replaced the latest-job startup prompt with an unfinished-job table.
+- One-click resume restores the selected file, provider, model and source settings.
+- Missing/changed files are blocked and retained, including offline-drive jobs.
+- Refresh on startup and completion; no API calls merely from opening the app.
+
+## 2026-10-12 — Readable subtitle length
+
+- Final SRT export now splits cues exceeding 30 characters for both providers.
+- Prefer punctuation/whitespace; preserve short cues and all translated text.
+- Preserve outer timing bounds and use length-weighted internal boundaries.
+- Cached results are split at export too; no extra API requests are needed.
+
+## 2026-10-12 — Long-file translation recovery verified
+
+- Diagnosed an incomplete Gemini JSON response during large-batch translation.
+- Limited translation batches to 50 cues and added a structured response schema.
+- Checkpointed successful translation batches so retries do not resend audio.
+- Completed a 136-minute Japanese MP4: five segments, 1,175 cues, zero invalid
+  ranges and zero overlaps; the translation-only retry made zero ASR requests.
+- Verification: 140 automated tests passed. Timing structure was checked;
+  sentence-level alignment still requires listening review.
+
 ## 現狀總覽
 - **目前狀態**: 穩定版本 (v3.0，Tkinter GUI 改版)
 - **既有功能**:
@@ -23,6 +47,65 @@
 ---
 
 ## 更新記錄
+
+### 2026-10-12 — 詞級時間倒退改用同次段落時間軸
+
+- 使用者新錯誤確認為 non_monotonic_timestamps；不再嘗試靠合併起點修復倒退詞時間。
+- words 無效時改用同次回應的有效 segments，保留原文順序、絕對 offset 並顯示提示。
+  不是 Gemini/Groq 服務備援，不追加轉錄請求；segments 也無效仍停止。
+- 在解析前持久保存 Groq 原始回應，解析失敗後重試／重開不重傳相同音訊區間。
+- 段落時間軸不再被匯出時的 5 秒硬截短修改。
+- 用已保存真實 API 回應離線注入倒退詞序驗證，7 cues 保持 3600–3640 秒，零新增 API 請求。
+
+### 2026-10-12 — 平均分段及時間驗證容錯
+
+- 新工作依目標長度計算段數再等分，100 分鐘成 25 分鐘 ×4；plan 持久保存。
+- 舊進度保持原固定範圍，Gemini 擷取長度與 Groq 起迄範圍都依實際 plan。
+- 重現相同起點 cue 觸發 overlapping subtitle timestamps 的 RuntimeError，改為合併後驗證。
+  真正倒退及超界仍拒絕並有明確原因；舊失敗工作缺原始回應，不能逐段宣稱確定根因。
+- 全段失敗保留 checkpoint，不覆寫／輸出空字幕。
+- 指定矽晶圓 MP3 40 秒台詞加 60 秒靜音實測：8 cues，60.393–99.933 秒，
+  零不合法時長、零重疊、零靜音区字幕；只上傳約 40.27 秒。
+
+### 2026-10-12 — 兩小時稀疏時間軸端對端驗證
+
+- 使用指定矽晶圓 MP3 的兩份 40 秒片段，放在人工兩小時音軌的 1790 秒與 5400 秒。
+- 上傳前排除近乎完全靜音片頭／片尾，保存修剪起點偏移；整段純靜音不呼叫 API。
+  不在本機執行 AI，不刪除原影片時間座標。
+- 經真實 GUI 開始／worker／queue／匯出流程，第一段完成後停止、關閉、重開續跑。
+- 驗證結果：16 cues，第一條 1790.69 秒，最後 5440.19 秒；零倒退、零重疊、
+  零台詞區域外字幕。30 分鐘交界前後字幕約 1799.97 / 1800.00 秒。
+- 第一輪 1 次、重開後 3 次 Groq 短請求；重開後累計上傳 73 秒，已完成第一段原文不變。
+  完成後 checkpoint 正常移除。不是上傳整部兩小時影音。
+- 此驗證僅確認稀疏時間軸、分段與重開續跑；不代表文字正確，也不是兩小時真實影片品質驗收。
+
+### 2026-10-12 — 簡化主畫面與 Groq 失敗診斷
+
+- Gemini/Groq 金鑰、分段長度與來源語言移至設定視窗處理分頁；取消還原未套用修改。
+- 設定分為處理、外觀、更新分頁，主畫面保留服務與模型。
+- 補充分階段安全錯誤紀錄與超界時間戳數值，避免只顯示「失敗」。
+- 使用者帳號 Groq 認證檢查 HTTP 200、模型可用；失敗工作檔至少有一個成功子段。
+  舊紀錄無逐段原因，尚不能確定其餘失敗原因，需新版本重試取得階段與錯誤代碼。
+
+### 2026-10-12 — 手動 Gemini / Groq 雙服務
+
+- 新增 Groq Large V3/Turbo 選擇、10/30 分鐘分段；預設 Large V3、30 分鐘，不自動切換服務。
+- 超過 24 MB 的 FLAC 自動二分，保存子段進度；Groq 工作檔按模型與來源語言分開，不覆盖 Gemini。
+- 中文以 OpenCC 轉繁體，外語繼續使用 Gemini 文字翻譯；Key 僅保存在不版控的 `.env`。
+- 實測矽晶圓 MP3 40 秒樣本及加 60 秒靜音樣本。auto 曾誤判英文並回傳超界時間；
+  指定 zh 仍在純靜音產生假台詞，因此新增 -80 dB 純靜音過濾。
+- 最終兩樣本皆 8 cues，首句時間分別 0.42 / 60.42 秒，末句 39.76 / 99.76 秒，
+  注入靜音區假字幕為零，皆包含「矽晶圓」。尚未驗收兩小時完整影片。
+- 新增可重複執行的 `scripts/validate_groq.py`；原始回應與字幕只保存到忽略的 `validation_outputs/`。
+- 完整本機測試 **119 passed**，包含大小二分、兩服務進度隔離、靜音過濾與邊界歸屬測試。
+
+### 2026-10-12 — 分階段續跑與安全停止
+
+- 分開保存轉錄原文／時間軸與翻譯 SRT；額度在翻譯階段用完時不再重跑 ASR。
+- 第一段開始前建立 checkpoint，舊版已完成段落仍可沿用。
+- 新增四語「停止並保存」與處理中關閉確認；目前請求返回且保存後停止／退出。
+- 新增跨重啟翻譯失敗續跑、轉錄後停止、取消關閉與等待保存後關閉測試。
+- 完整本機測試：**110 passed**（2026-10-12）；本輪未上傳真實音檔或消耗 Gemini 額度。
 
 ### 2026-09-29 — 免費額度用盡後可續跑
 
