@@ -71,6 +71,9 @@ def parse_response(data, offset, duration, silences=(), owned_start=None, owned_
             raise segment_error from word_error
         for cue in cues:
             cue['timing_source'] = 'segment'
+            from .translator import _safe_err
+            cue['timing_fallback_reason'] = (
+                getattr(word_error, 'subtitler_reason', None) or _safe_err(word_error))
         return cues
 
 
@@ -82,7 +85,9 @@ def _parse_word_response(data, offset, duration, silences=(), owned_start=None, 
     if not words:
         if not data['text'].strip():
             return []
-        raise ValueError('Groq returned text without requested word timestamps')
+        error = ValueError('Groq returned text without requested word timestamps')
+        error.subtitler_reason = 'missing_word_timestamps'
+        raise error
     parsed = []
     for word in words:
         start, end = float(word['start']), float(word['end'])

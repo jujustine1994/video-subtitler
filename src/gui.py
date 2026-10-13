@@ -302,15 +302,18 @@ class SubtitlerApp:
 
         self._build_status_bar()
         history = ttk.LabelFrame(self.root, text=t('gui.history.title'), padding=8)
-        history.grid(row=5, column=0, sticky='ew', padx=14, pady=(0, 6))
+        history.grid(row=5, column=0, sticky='nsew', padx=14, pady=(0, 6))
         history.columnconfigure(0, weight=1)
+        history.rowconfigure(0, weight=1)
+        self.root.rowconfigure(5, weight=1)
         columns = ('file', 'service', 'progress', 'updated', 'status')
-        self.pending_tree = ttk.Treeview(history, columns=columns, show='headings', height=3,
-                                        selectmode='browse')
-        for column, width in zip(columns, (240, 170, 70, 130, 120)):
+        self.pending_tree = ttk.Treeview(history, columns=columns, show='headings', height=6,
+                                        selectmode='browse', style='History.Treeview')
+        for column, width in zip(columns, (420, 260, 100, 140, 150)):
             self.pending_tree.heading(column, text=t('gui.history.' + column))
-            self.pending_tree.column(column, width=width, minwidth=50)
-        self.pending_tree.grid(row=0, column=0, sticky='ew')
+            self.pending_tree.column(column, width=width, minwidth=width,
+                                     stretch=column == 'file')
+        self.pending_tree.grid(row=0, column=0, sticky='nsew')
         scroll = ttk.Scrollbar(history, orient='vertical', command=self.pending_tree.yview)
         scroll.grid(row=0, column=1, sticky='ns')
         self.pending_tree.configure(yscrollcommand=scroll.set)
@@ -352,6 +355,9 @@ class SubtitlerApp:
 
         style = ttk.Style()
         font = ("Microsoft JhengHei", 12)
+        style.configure('History.Treeview', font=font,
+                        rowheight=tkfont.nametofont('TkDefaultFont').metrics('linespace') + 12)
+        style.configure('History.Treeview.Heading', font=font)
         label_fg = theme["label_fg"]
 
         style.configure("TButton", font=font)

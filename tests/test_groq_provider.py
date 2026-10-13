@@ -156,6 +156,16 @@ def test_both_word_and_segment_times_invalid_still_refuse_output():
         parse_response(data, 0, 10)
 
 
+def test_fallback_exposes_word_failure_reason_without_text():
+    from src.groq_provider import parse_response
+    data = {'text': 'hi', 'words': [{'word': 'a', 'start': 2, 'end': 3},
+                                   {'word': 'b', 'start': 1, 'end': 2}],
+            'segments': [{'text': 'hi', 'start': 1, 'end': 3}]}
+    cues = parse_response(data, 1800, 10)
+    assert cues[0]['timing_fallback_reason'] == 'non_monotonic_timestamps'
+    assert cues[0]['start'] == 1801
+
+
 def test_segment_fallback_end_is_not_truncated_to_five_seconds(app_factory, tmp_path):
     app, _, _ = app_factory('zh_tw')
     app._video_path = str(tmp_path/'fallback.mp4')

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 2026-10-13 — History readability and timing diagnostics
+
+- Unfinished jobs now uses six rows, DPI-aware font/row height and expanding layout.
+- Same-response segment fallback now preserves and reports its word-timing failure
+  reason (missing word timestamps, reversed times, out-of-range values, etc.).
+- Genuine invalid word timing still uses validated segment timing without another
+  upload; no sorting or guessed chronology is introduced.
+
 ## 2026-10-12 — Multi-job resume list
 
 - Replaced the latest-job startup prompt with an unfinished-job table.

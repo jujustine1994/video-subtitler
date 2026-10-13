@@ -538,7 +538,10 @@ def process_saved_segment(client, video_path, audio_path, index, offset, state,
             exc.subtitler_stage = 'save_transcript'
             raise
     if on_log and any(cue.get('timing_source') == 'segment' for cue in cues):
-        on_log(t('gui.log.segment_timing_fallback', index=index + 1))
+        reasons = sorted({cue.get('timing_fallback_reason', 'legacy_response')
+                          for cue in cues if cue.get('timing_source') == 'segment'})
+        on_log(t('gui.log.segment_timing_fallback', index=index + 1)
+               + ' [' + '; '.join(reasons) + ']')
     check_stop()
     try:
         if hasattr(client, 'translate'):
