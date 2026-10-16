@@ -15,8 +15,9 @@ from google.genai import types
 from . import prompts
 from .i18n import t
 from .logtext import LOG_TEXT
+from .errors import reason_error, response_reason
 
-CHUNK_DURATION = 1800  # 每段處理長度（秒），30 分鐘
+CHUNK_DURATION = 600  # New jobs: at most ten minutes per balanced segment.
 # 專用 ASR 與翻譯分開：時間軸只能由 ASR 的 word annotations 決定，翻譯不可改它。
 ASR_MODEL_NAME = "gemini-3.5-transcribe"
 TRANSLATION_MODEL_NAME = "gemini-3.5-flash-lite"
@@ -285,7 +286,9 @@ def _offset_seconds(value) -> float:
     """Gemini word annotation 的 `0.100s` 轉成秒。"""
     match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)s\s*", str(value))
     if not match:
-        raise ValueError(f"invalid word timestamp: {value!r}")
+        error = ValueError('invalid word timestamp')
+        error.subtitler_reason = 'invalid_timestamps'
+        raise error
     return float(match.group(1))
 
 
@@ -305,7 +308,7 @@ def _extract_words(interaction) -> list[dict]:
                     "end": _offset_seconds(getattr(annotation, "end_offset", "")),
                 })
     if not words:
-        raise RuntimeError("Gemini Transcribe returned no word timestamps")
+        raise reason_error('missing_word_timestamps')
     return words
 
 
@@ -331,21 +334,41 @@ def _format_srt_time(seconds: float) -> str:
 
 
 def _source_cues(words: list[dict], offset_seconds: float) -> list[dict]:
-    """只以 ASR 回傳的詞級時間做 cue；不讓 LLM 產生或修補時間軸。"""
-    cues, bucket = [], []
+    """只以 ASR 回傳的詞級時間做 cue；不讓 LLM 產生或修補時間軸。
+
+    搶話／分句交界時 ASR 常給出比前一字更早的開始時間。字序一律照 ASR，不排序；
+    倒退的字只把 start 拉齊到前一字的 start（不拉到 end，避免幻覺長字把後面全推遲），
+    之後的 cue 重疊再由下方修 end 處理，所以字幕永遠依序、不重疊。
+    """
+    clamped, latest = [], None
     for word in words:
+        word = dict(word)
+        if latest is not None and word["start"] < latest - 0.001:
+            word["start"] = latest
+            word["end"] = max(word["end"], latest)
+            word["adjusted"] = True
+        latest = word["start"] if latest is None else max(latest, word["start"])
+        clamped.append(word)
+
+    def make_cue(bucket):
+        cue = {"start": bucket[0]["start"] + offset_seconds,
+               "end": max(w["end"] for w in bucket) + offset_seconds,
+               "text": _join_words(bucket)}
+        if any(w.get("adjusted") for w in bucket):
+            cue["timing_adjusted"] = True
+        return cue
+
+    cues, bucket = [], []
+    for word in clamped:
         bucket.append(word)
         text = _join_words(bucket)
         elapsed = word["end"] - bucket[0]["start"]
         ending = word["text"].endswith(("。", "！", "？", ".", "!", "?"))
         if ending or elapsed >= 5 or len(text) >= 30:
-            cues.append({"start": bucket[0]["start"] + offset_seconds,
-                         "end": word["end"] + offset_seconds, "text": text})
+            cues.append(make_cue(bucket))
             bucket = []
     if bucket:
-        cues.append({"start": bucket[0]["start"] + offset_seconds,
-                     "end": bucket[-1]["end"] + offset_seconds,
-                     "text": _join_words(bucket)})
+        cues.append(make_cue(bucket))
 
     # API 偶爾會給標點 0 秒長度或前後 cue 共用邊界。SRT 不能有零長度，
     # 且播放器對重疊 cue 的行為不一致；在不改變 start 的前提下修正 end。
@@ -362,6 +385,8 @@ def _source_cues(words: list[dict], offset_seconds: float) -> list[dict]:
             if cue['start'] <= previous['start'] + 0.001:
                 previous['text'] = _join_words([{'text': previous['text']}, {'text': cue['text']}])
                 previous['end'] = max(previous['end'], cue['end'])
+                if cue.get('timing_adjusted'):
+                    previous['timing_adjusted'] = True
                 continue
             if previous['end'] >= cue['start']:
                 previous['end'] = max(previous['start'] + 0.001, cue['start'] - 0.001)
@@ -386,7 +411,7 @@ def _validate_cues(cues: list[dict]) -> None:
 
 
 def _translate_cues(client, cues: list[dict], target_language: str,
-                    batch_cache=None, on_batch_saved=None, stop_event=None) -> list[dict]:
+                    batch_cache=None, on_batch_saved=None, stop_event=None, model=None) -> list[dict]:
     for start in range(0, len(cues), 50):
         if stop_event is not None and stop_event.is_set():
             raise StopRequested()
@@ -394,7 +419,8 @@ def _translate_cues(client, cues: list[dict], target_language: str,
         key = f'{start}:{len(batch)}'
         texts = batch_cache.get(key) if batch_cache is not None else None
         if texts is None:
-            translated = _translate_batch(client, copy.deepcopy(batch), target_language)
+            translated = (_translate_batch(client, copy.deepcopy(batch), target_language, model=model)
+                          if model else _translate_batch(client, copy.deepcopy(batch), target_language))
             texts = [item['text'] for item in translated]
             if batch_cache is not None:
                 batch_cache[key] = texts
@@ -407,7 +433,7 @@ def _translate_cues(client, cues: list[dict], target_language: str,
     return cues
 
 
-def _translate_batch(client, cues: list[dict], target_language: str) -> list[dict]:
+def _translate_batch(client, cues: list[dict], target_language: str, model=None) -> list[dict]:
     payload = [{"id": index, "text": cue["text"]} for index, cue in enumerate(cues)]
     prompt = (
         f"Translate each subtitle text into {target_language}. Return JSON only with a "
@@ -418,7 +444,7 @@ def _translate_batch(client, cues: list[dict], target_language: str) -> list[dic
         + json.dumps(payload, ensure_ascii=False)
     )
     response = client.models.generate_content(
-        model=TRANSLATION_MODEL_NAME,
+        model=model or TRANSLATION_MODEL_NAME,
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -432,13 +458,16 @@ def _translate_batch(client, cues: list[dict], target_language: str) -> list[dic
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         ),
     )
+    failure = response_reason(response)
+    if failure:
+        raise reason_error(failure)
     try:
         translated = json.loads(response.text)["translations"]
         by_id = {item["id"]: str(item["text"]).strip() for item in translated}
         if len(translated) != len(cues) or set(by_id) != set(range(len(cues))) or any(not text for text in by_id.values()):
             raise ValueError("translation ids are incomplete")
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise RuntimeError("Gemini translation response is invalid; no subtitle was written") from exc
+        raise reason_error('invalid_translation_response') from exc
     for index, cue in enumerate(cues):
         cue["text"] = by_id[index]
     return cues
@@ -534,14 +563,23 @@ def process_saved_segment(client, video_path, audio_path, index, offset, state,
             raise
         try:
             resume.record_transcript(video_path, state, index, cues)
+            if hasattr(client, 'model'):
+                state.setdefault('segment_models', {}).setdefault(key, {})['transcription'] = getattr(client, 'identity', client.model)
+                resume.save(video_path, state)
         except Exception as exc:
             exc.subtitler_stage = 'save_transcript'
             raise
+    if hasattr(client, 'model'):
+        state.setdefault('segment_models', {}).setdefault(key, {}).setdefault(
+            'transcription', state['identity']['model'])
     if on_log and any(cue.get('timing_source') == 'segment' for cue in cues):
         reasons = sorted({cue.get('timing_fallback_reason', 'legacy_response')
                           for cue in cues if cue.get('timing_source') == 'segment'})
         on_log(t('gui.log.segment_timing_fallback', index=index + 1)
                + ' [' + '; '.join(reasons) + ']')
+    adjusted = sum(1 for cue in cues if cue.get('timing_adjusted'))
+    if on_log and adjusted:
+        on_log(t('gui.log.segment_timing_adjusted', index=index + 1, count=adjusted))
     check_stop()
     try:
         if hasattr(client, 'translate'):
@@ -557,6 +595,12 @@ def process_saved_segment(client, video_path, audio_path, index, offset, state,
     result = _cues_to_srt(translated)
     try:
         resume.record_segment(video_path, state, index, result)
+        if hasattr(client, 'translation_model'):
+            state.setdefault('segment_models', {}).setdefault(key, {})['translation'] = getattr(
+                client, 'last_translation_model', client.translation_model)
+            resume.save(video_path, state)
+        state.setdefault('failures', {}).pop(key, None)
+        resume.save(video_path, state)
     except Exception as exc:
         exc.subtitler_stage = 'save_subtitles'
         raise

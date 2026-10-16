@@ -1,5 +1,50 @@
 # CHANGELOG
 
+## 2026-10-17 — Backward word times are shifted in order, not fatal
+
+- Root cause of frequent `non_monotonic_timestamps` /
+  `word_and_segment_timestamps_invalid`: both Gemini ASR and Groq Whisper emit
+  word starts earlier than the previous word at crosstalk and segment seams
+  (Folsom: 5 in 1147 words, up to 2.2 s; STAR-145: 45 backsteps, 31 ≤ 0.6 s). One
+  backstep failed the whole segment; Groq then fell to segment times, which can be
+  hallucinated (end < start).
+- `_source_cues` keeps ASR word order and clamps a backward start to the previous
+  word's start; the existing end trim keeps cues sequential with no overlap.
+  Affected cues are flagged `timing_adjusted` and counted in the GUI log.
+- Groq no longer rejects backward words; segment fallback remains only for truly
+  invalid word times (out of range, negative).
+
+## 2026-10-16 — Gemini model preflight and live translation list
+
+- Before any upload (and before a checkpoint is created) the run checks the
+  account's live Gemini model list: Gemini ASR (`gemini-3.5-transcribe`) missing →
+  explicit `model_unavailable (<model>)` error; it is never auto-swapped.
+- Translation dropdown is filled from the live list (stable `gemini-X-flash[-lite]`
+  only; defaults first). A retired saved/selected translation model switches to the
+  first available one and is logged.
+- Groq + non-Chinese audio language without a Gemini key now fails up front instead
+  of after Groq transcription; `auto` without a key only warns.
+- Log header shows the actual ASR + translation model pair.
+
+## 2026-10-14 — Stage-model retry and completed-media action
+
+- Independent Gemini translation selector; selected failed segments rebuild the
+  provider/client while retaining completed subtitles, source cues and job identity.
+- Per-model ASR/translation caches and persisted latest settings/provenance.
+- Clear, localized safe error reasons and durable failed-stage records; quota/stop
+  retains the unfinished selection list. Safety blocks are not bypassed.
+- Open source media action appears only after every segment succeeds and export
+  completes; always targets the completed work, not a later picker selection.
+
+## 2026-10-14 — Ten-minute jobs and audio cleanup
+
+- All new GUI/unattended jobs use a ten-minute maximum balanced segment size.
+- Old checkpoint boundaries remain unchanged, even when the default changes.
+- Gemini slices now live in unique system temporary directories rather than the
+  project folder; normal success, failure and stop remove files and directories.
+- Added matching Groq cleanup regression tests; force kill/power loss is outside
+  normal Python cleanup guarantees. No existing user files were deleted.
+
 ## 2026-10-13 — History readability and timing diagnostics
 
 - Unfinished jobs now uses six rows, DPI-aware font/row height and expanding layout.

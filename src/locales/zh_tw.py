@@ -17,6 +17,23 @@
 from __future__ import annotations
 
 STRINGS: dict[str, str] = {
+    "gui.lbl.translation_model": "翻譯模型",
+    "gui.btn.open_source": "開啟原始影片",
+    "gui.msg.open_source_failed": "無法用預設程式開啟原檔，請檢查播放器設定。",
+    "gui.msg.invalid_model_settings": "模型設定或 API Key 無效，請檢查設定後重試。",
+    "gui.error.quota": "額度不足／請求過快，請稍後續跑；換模型不保證有額度。",
+    "gui.error.authentication": "API Key 或權限不足。",
+    "gui.error.model_unavailable": "模型不存在或此帳號無法使用。",
+    "gui.error.invalid_request": "API 不接受這個請求／設定，不能保證換模型可修復。",
+    "gui.error.service_unavailable": "服務暫時不可用／連線異常。",
+    "gui.error.timeout": "請求逾時。",
+    "gui.error.content_blocked": "服務因內容或安全規則封鎖；不以換模型繞過。",
+    "gui.error.output_truncated": "輸出達上限而截斷。",
+    "gui.error.invalid_translation_response": "翻譯 JSON、字幕編號或內容格式不完整。",
+    "gui.error.invalid_timestamps": "時間軸驗證失敗。",
+    "gui.error.missing_word_timestamps": "轉錄未回傳要求的詞級時間戳。",
+    "gui.error.missing_translation_key": "外語翻譯需要 Gemini Key；中文音訊可把音訊語言設為中文。",
+    "gui.error.unknown": "未知錯誤；未取得可安全顯示的具體原因。",
     "gui.history.title": "未完成工作",
     "gui.history.file": "檔案",
     "gui.history.service": "服務／模型",
@@ -30,6 +47,7 @@ STRINGS: dict[str, str] = {
     "gui.history.changed": "檔案已變更",
     "gui.history.unavailable": "找不到原檔案或檔案已變更，無法安全續跑。請還原原檔案後重新整理；進度仍保留。",
     "gui.log.segment_timing_fallback": "第 {index} 段詞級時間戳不可靠，已改用同次回應的段落時間軸；未重新上傳。",
+    "gui.log.segment_timing_adjusted": "第 {index} 段有 {count} 條字幕因搶話／時間倒退，已依序微調時間（不重疊、不改字序）。",
     "gui.log.all_failed": "所有段落均失敗；已保留進度，不輸出或覆寫字幕。",
     "gui.frame.service": "辨識服務",
     "gui.frame.processing_settings": "處理設定",
@@ -119,6 +137,8 @@ STRINGS: dict[str, str] = {
     "gui.log.resume_found":     "找到先前進度，略過已完成的 {count} 段。",
     "gui.log.quota_paused":     "免費額度暫時用完，進度已儲存；下次選同一支影片並按開始即可續跑。",
     "gui.log.resume_selected":  "已自動選取未完成工作：{name}",
+    "gui.log.translation_model_switched": "翻譯模型 {old} 已無法使用，自動改用 {new}。",
+    "gui.log.translation_key_missing_auto": "未填 Gemini Key：中文音訊可正常處理，外語音訊會在翻譯階段失敗。",
 
     # ── 同時推 UI 又落檔的訊息 ─────────────────────────────────────
     # ⚠ 這兩條與 logtext.py 的 segment_error / segment_error_final 字面相同，

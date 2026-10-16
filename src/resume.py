@@ -39,6 +39,19 @@ def load(video_path: str | Path, duration: float, chunk_seconds: int, model: str
     return data if data.get("identity") == _identity(video_path, duration, chunk_seconds, model) else None
 
 
+def load_existing(video_path, duration, model):
+    """Keep a valid old job's segment boundaries when the new default changes."""
+    try:
+        data = json.loads(checkpoint_path(video_path, model).read_text(encoding='utf-8'))
+        chunk = data['identity']['chunk_seconds']
+        restored = load(video_path, duration, chunk, model)
+        if restored is not None:
+            segment_plan(restored)
+        return restored
+    except (OSError, KeyError, TypeError, ValueError):
+        return None
+
+
 def create(video_path: str | Path, duration: float, chunk_seconds: int, model: str) -> dict:
     state = {"schema": SCHEMA_VERSION,
              "identity": _identity(video_path, duration, chunk_seconds, model), "segments": {},
@@ -171,6 +184,7 @@ def pending_jobs(model: str | None, *, include_unavailable=False) -> list[dict]:
                 continue
             jobs.append({"path": str(video_path), "completed": len(state["segments"]),
                          "total": total, "status": status,
+                         "processing": state.get('processing', {}),
                          "model": identity['model'], "chunk_seconds": identity['chunk_seconds'],
                          "updated_at": float(entry.get("updated_at", 0))})
         except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):

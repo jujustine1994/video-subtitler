@@ -7,6 +7,23 @@
 from __future__ import annotations
 
 STRINGS: dict[str, str] = {
+    "gui.lbl.translation_model": "翻訳モデル",
+    "gui.btn.open_source": "元の動画を開く",
+    "gui.msg.open_source_failed": "既定のアプリで開けません。プレーヤー設定を確認してください。",
+    "gui.msg.invalid_model_settings": "モデル設定または API Key が無効です。確認して再試行してください。",
+    "gui.error.quota": "使用量／リクエスト上限。後で再開してください。他のモデルも同じ制限の可能性があります。",
+    "gui.error.authentication": "API Key または権限が不足しています。",
+    "gui.error.model_unavailable": "このアカウントではモデルを使用できません。",
+    "gui.error.invalid_request": "要求／設定が拒否されました。モデル変更で直るとは限りません。",
+    "gui.error.service_unavailable": "サービス／接続が一時的に利用できません。",
+    "gui.error.timeout": "要求がタイムアウトしました。",
+    "gui.error.content_blocked": "コンテンツ／安全制限によるブロック。モデル変更で回避しません。",
+    "gui.error.output_truncated": "出力が上限で途切れました。",
+    "gui.error.invalid_translation_response": "翻訳 JSON、字幕 ID またはテキストが不完全です。",
+    "gui.error.invalid_timestamps": "時刻の検証に失敗しました。",
+    "gui.error.missing_word_timestamps": "要求した単語時刻が返されませんでした。",
+    "gui.error.missing_translation_key": "外国語の翻訳には Gemini Key が必要です。中国語音声は音声言語を中国語に設定してください。",
+    "gui.error.unknown": "不明なエラー。安全に表示できる詳しい理由がありません。",
     "gui.history.title": "未完了の作業",
     "gui.history.file": "ファイル",
     "gui.history.service": "サービス／モデル",
@@ -20,6 +37,7 @@ STRINGS: dict[str, str] = {
     "gui.history.changed": "ファイル変更",
     "gui.history.unavailable": "元のファイルが見つからないか変更されています。元に戻して更新してください。保存済みの進捗は保持されます。",
     "gui.log.segment_timing_fallback": "セグメント {index}：単語の時刻が不正なため、同じ応答の段落時刻を使用します。再アップロードはありません。",
+    "gui.log.segment_timing_adjusted": "第 {index} 区間：{count} 件の字幕で時刻の逆行（話者の重なり）があり、順序を保ったまま時刻を調整しました。",
     "gui.log.all_failed": "全セグメントが失敗しました。進捗は保持され、字幕は出力・上書きされません。",
     "gui.frame.service": "音声認識サービス",
     "gui.frame.processing_settings": "処理設定",
@@ -108,6 +126,8 @@ STRINGS: dict[str, str] = {
     "gui.log.resume_found":     "前回の進捗を見つけました。完了済みの {count} セグメントをスキップします。",
     "gui.log.quota_paused":     "無料枠を一時的に使い切りました。進捗は保存済みです。同じ動画を選んで開始すれば後で再開できます。",
     "gui.log.resume_selected":  "未完了の作業を自動選択しました：{name}",
+    "gui.log.translation_model_switched": "翻訳モデル {old} は使用できないため、{new} に切り替えました。",
+    "gui.log.translation_key_missing_auto": "Gemini Key 未設定：中国語音声は処理できますが、他言語は翻訳段階で失敗します。",
 
     # ── 画面とログの両方に出るメッセージ（ログ側は設計どおり繁体字のまま。
     #    logtext.py を参照）──

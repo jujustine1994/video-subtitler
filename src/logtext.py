@@ -24,6 +24,7 @@ LOG_TEXT: dict[str, str] = {
     # 任務起始行（唯一有完整日期的行，關鍵設定塞同一行）
     "task_start_full":  "轉錄 {name} | {model} | {count}段",
     "task_start_retry": "補跑 {name} | {model} | {count}段",
+    "translation_model_switched": "翻譯模型 {old} 已無法使用，改用 {new}",
     # 任務結果行
     "task_ok":          "成功，耗時 {minutes}分{seconds}秒",
     "task_fail":        "失敗，耗時 {minutes}分{seconds}秒",

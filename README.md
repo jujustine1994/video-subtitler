@@ -95,6 +95,30 @@ Automatically generate Traditional Chinese `.srt` subtitle files for videos with
 
 ### Gemini / Groq selection
 
+The translation model has its own selector: `gemini-3.5-flash-lite` (default)
+or `gemini-3.6-flash`. Availability/free quota depends on your account.
+Gemini speech recognition still uses the specialized `gemini-3.5-transcribe`;
+text models are not interchangeable with that transcription endpoint.
+
+After a failure, change the recognition service/model or translation model,
+select the failed segments, and click Retry. The retry rebuilds the client but
+preserves completed segments and original segment boundaries. Saved transcripts
+are reused for translation, and translation batches are isolated by model.
+Failure rows show stage/model and a safe reason (quota, permission, malformed
+JSON, truncated output, timestamps, etc.); raw responses and keys are not shown.
+Content/safety blocks are reported rather than bypassed by switching models.
+The unfinished-job list restores the latest retry settings after restart.
+
+When every segment succeeds and the SRT is written, Open source media appears.
+Click it to launch the original file in your Windows default player. It does not
+autoplay on completion; automatic SRT loading depends on your player settings.
+
+New jobs now use balanced segments of at most 10 minutes (both providers).
+Valid existing checkpoints retain their original segment boundaries when resumed.
+Audio slices use per-run system temporary directories, removed on success, errors
+and normal stop/close. Forced termination/power loss may leave temporary files.
+Resume JSON is retained for unfinished work; it is not an audio slice.
+
 The main window's Unfinished jobs section lists all indexed checkpoints across
 folders, including progress, provider/model and update time. Select a job and
 click Resume selected to restore its settings and continue. Startup only loads

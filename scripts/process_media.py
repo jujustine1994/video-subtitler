@@ -35,7 +35,7 @@ def main():
     app.groq_model_var.set(args.model)
     app._refresh_model_choices()
     app.audio_language_var.set(args.language)
-    app.chunk_var.set('30')
+    app.chunk_var.set('10')
     app.save_key_var.set(False)
     app.file_var.set(str(source))
     original_log = app._log

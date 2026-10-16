@@ -71,7 +71,7 @@ def test_ui_exposes_manual_service_model_and_duration(app_factory):
     app, _, _ = app_factory('zh_tw')
     assert tuple(app.provider_box['values']) == ('Gemini', 'Groq')
     assert app.groq_model_var.get() == 'whisper-large-v3'
-    assert app.chunk_var.get() == '30'
+    assert app.chunk_var.get() == '10'
 
 
 def test_service_switch_selects_recommended_model_without_sending_label(app_factory):
@@ -103,10 +103,10 @@ def test_keys_and_advanced_options_live_in_settings(app_factory):
     assert len(entries(win)) == 1  # only source file on the main screen
     app._open_settings()
     assert len(entries(app.settings_win)) == 2
-    app.chunk_var.set('10')
+    app.chunk_var.set('30')
     # Invoke the native close protocol, which has the same cancel semantics as the button.
     app.settings_win.tk.call(app.settings_win.protocol('WM_DELETE_WINDOW'))
-    assert app.chunk_var.get() == '30'
+    assert app.chunk_var.get() == '10'
 
 
 def test_timestamp_diagnostic_is_numeric_and_no_request_secret():
@@ -135,11 +135,25 @@ def test_half_hour_of_digital_silence_needs_no_cloud_request(tmp_path, monkeypat
     assert provider.uploaded_seconds == 0
 
 
-def test_reversed_word_times_use_valid_segment_times_without_reupload():
+def test_reversed_word_times_are_clamped_in_order_without_overlap():
+    from src.groq_provider import parse_response
+    data = {'text':'one. two. three.', 'words':[
+        {'word':'one.', 'start':4, 'end':5},
+        {'word':'two.', 'start':3.5, 'end':4.2},
+        {'word':'three.', 'start':6, 'end':7}],
+        'segments':[{'start':3.5, 'end':7, 'text':'one. two. three.'}]}
+    cues = parse_response(data, 100, 10)
+    assert [c['text'] for c in cues] == ['one. two.', 'three.']
+    assert 'timing_source' not in cues[0]
+    assert cues[0]['timing_adjusted'] is True
+    assert all(a['end'] < b['start'] for a, b in zip(cues, cues[1:]))
+
+
+def test_invalid_word_times_use_valid_segment_times_without_reupload():
     from src.groq_provider import parse_response
     data = {'text':'one. two.', 'words':[
         {'word':'one.', 'start':4, 'end':5},
-        {'word':'two.', 'start':1, 'end':2}],
+        {'word':'two.', 'start':1, 'end':50}],
         'segments':[{'start':1, 'end':5, 'text':'one. two.'}]}
     cues = parse_response(data, 3600, 10)
     assert cues[0]['start'] == 3601
@@ -159,10 +173,10 @@ def test_both_word_and_segment_times_invalid_still_refuse_output():
 def test_fallback_exposes_word_failure_reason_without_text():
     from src.groq_provider import parse_response
     data = {'text': 'hi', 'words': [{'word': 'a', 'start': 2, 'end': 3},
-                                   {'word': 'b', 'start': 1, 'end': 2}],
+                                   {'word': 'b', 'start': 1, 'end': 50}],
             'segments': [{'text': 'hi', 'start': 1, 'end': 3}]}
     cues = parse_response(data, 1800, 10)
-    assert cues[0]['timing_fallback_reason'] == 'non_monotonic_timestamps'
+    assert cues[0]['timing_fallback_reason'].startswith('timestamp_out_of_range')
     assert cues[0]['start'] == 1801
 
 
@@ -212,3 +226,28 @@ def test_parse_failure_reuses_saved_raw_response_instead_of_reupload(tmp_path, m
     with pytest.raises(ValueError):
         restarted.recognize(path,0,10)
     assert restarted.request_count == 0
+
+
+def test_gemini_crosstalk_backstep_is_shifted_not_reordered():
+    from src import translator
+    words = [{'text': 'tied', 'start': 437.0, 'end': 437.5},
+             {'text': 'bondage.', 'start': 438.2, 'end': 438.8},
+             {'text': 'Yeah.', 'start': 436.0, 'end': 436.4},
+             {'text': 'Next', 'start': 440.0, 'end': 440.3}]
+    cues = translator._source_cues(words, 0)
+    assert [c['text'] for c in cues] == ['tied bondage.', 'Yeah.', 'Next']
+    assert cues[1]['timing_adjusted'] is True
+    assert 'timing_adjusted' not in cues[0] and 'timing_adjusted' not in cues[2]
+    assert all(c['start'] < c['end'] for c in cues)
+    assert all(a['end'] < b['start'] for a, b in zip(cues, cues[1:]))
+
+
+def test_backstep_across_cue_boundary_keeps_cues_sequential():
+    from src import translator
+    words = [{'text': 'there.', 'start': 129.4, 'end': 129.6},
+             {'text': "It's", 'start': 129.2, 'end': 129.3},
+             {'text': 'fine.', 'start': 129.5, 'end': 130.0}]
+    cues = translator._source_cues(words, 0)
+    assert all(c['start'] < c['end'] for c in cues)
+    assert all(a['end'] < b['start'] for a, b in zip(cues, cues[1:]))
+    assert ' '.join(c['text'] for c in cues) == "there. It's fine."

@@ -7,6 +7,23 @@
 from __future__ import annotations
 
 STRINGS: dict[str, str] = {
+    "gui.lbl.translation_model": "翻译模型",
+    "gui.btn.open_source": "打开原始视频",
+    "gui.msg.open_source_failed": "无法用默认程序打开原文件，请检查播放器设置。",
+    "gui.msg.invalid_model_settings": "模型设置或 API Key 无效，请检查后重试。",
+    "gui.error.quota": "额度不足／请求过快，请稍后继续；换模型不保证有额度。",
+    "gui.error.authentication": "API Key 或权限不足。",
+    "gui.error.model_unavailable": "模型不存在或此账号无法使用。",
+    "gui.error.invalid_request": "API 不接受此请求／设置，不保证换模型可修复。",
+    "gui.error.service_unavailable": "服务暂不可用／连接异常。",
+    "gui.error.timeout": "请求超时。",
+    "gui.error.content_blocked": "服务因内容或安全规则拦截；不通过换模型绕过。",
+    "gui.error.output_truncated": "输出达到上限而截断。",
+    "gui.error.invalid_translation_response": "翻译 JSON、字幕编号或内容格式不完整。",
+    "gui.error.invalid_timestamps": "时间轴验证失败。",
+    "gui.error.missing_word_timestamps": "转录没有返回所需词级时间戳。",
+    "gui.error.missing_translation_key": "外语翻译需要 Gemini Key；中文音频可把音频语言设为中文。",
+    "gui.error.unknown": "未知错误；没有可安全显示的具体原因。",
     "gui.history.title": "未完成任务",
     "gui.history.file": "文件",
     "gui.history.service": "服务／模型",
@@ -20,6 +37,7 @@ STRINGS: dict[str, str] = {
     "gui.history.changed": "文件已更改",
     "gui.history.unavailable": "找不到原文件或文件已更改，无法安全继续。请恢复原文件后刷新；进度仍保留。",
     "gui.log.segment_timing_fallback": "第 {index} 段词级时间戳不可靠，已改用同次响应的段落时间轴；未重新上传。",
+    "gui.log.segment_timing_adjusted": "第 {index} 段有 {count} 条字幕因抢话／时间倒退，已按顺序微调时间（不重叠、不改字序）。",
     "gui.log.all_failed": "所有段落均失败；已保留进度，不输出或覆盖字幕。",
     "gui.frame.service": "识别服务",
     "gui.frame.processing_settings": "处理设置",
@@ -108,6 +126,8 @@ STRINGS: dict[str, str] = {
     "gui.log.resume_found":     "找到先前进度，跳过已完成的 {count} 段。",
     "gui.log.quota_paused":     "免费额度暂时用完，进度已保存；下次选择同一支视频并按开始即可继续。",
     "gui.log.resume_selected":  "已自动选择未完成任务：{name}",
+    "gui.log.translation_model_switched": "翻译模型 {old} 已无法使用，自动改用 {new}。",
+    "gui.log.translation_key_missing_auto": "未填 Gemini Key：中文音频可正常处理，外语音频会在翻译阶段失败。",
 
     # ── 同时推 UI 又落档的消息（落档那条永远是繁中，见 logtext.py）──
     "log.segment_error":        "第{index}段 上传Gemini -> {detail} | 重试 {attempt}/{total}",

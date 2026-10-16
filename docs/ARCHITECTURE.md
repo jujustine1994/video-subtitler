@@ -1,5 +1,29 @@
 # ARCHITECTURE
 
+## Stage model selection and selective retry (2026-10-14)
+
+`model_config.GeminiProvider` implements the same saved-stage interface as Groq.
+`processing_settings` separates executable provider/ASR/translation choices from
+checkpoint `identity.model`, which remains the original stable job identity.
+`processing` stores latest choices, `source_language` stays fixed, and
+`segment_models` records transcription/translation provenance. Legacy transcripts
+infer original ASR provenance; OpenCC conversion is recorded as `opencc:s2twp`.
+
+Changed Groq models use `asr_attempts[provider.identity]` instead of the original
+raw-response cache. `translation_batches` remains the legacy/default model cache;
+alternative models use `translation_models[model][index]`. Successful original
+transcripts are always reused unless absent. Optional fields preserve schema 1.
+
+`failures[index]` contains stage, controlled reason, safe detail and model settings.
+Reason classification never displays provider message bodies/URLs/Key strings.
+Stop/quota completion re-derives unfinished indices from saved state so they remain
+selectable. Content blocks are not routed to another model. Historical selection
+keeps the original checkpoint locator while restoring latest processing settings.
+
+The successful-source button stores the actual completed source separately from
+the current file picker. It appears only after complete export; failed/stopped/new
+work clears it, and Windows launch errors are shown without raw exception content.
+
 ## Unfinished job list
 
 `pending_jobs(include_unavailable=True)` lists indexed checkpoints across folders

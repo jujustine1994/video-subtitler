@@ -112,10 +112,7 @@ def _parse_word_response(data, offset, duration, silences=(), owned_start=None, 
         text = str(word['word']).strip()
         if text:
             parsed.append({'text': text, 'start': start, 'end': end})
-    if any(b['start'] < a['start'] - 0.001 for a,b in zip(parsed, parsed[1:])):
-        error = RuntimeError('non-monotonic word timestamps')
-        error.subtitler_reason = 'non_monotonic_timestamps'
-        raise error
+    # Backsteps (crosstalk, segment seams) are clamped in order by _source_cues.
     return _source_cues(parsed, offset)
 
 
@@ -150,13 +147,17 @@ def transcribe_bounded(source, start, duration, extract, recognize, temp_dir,
 
 
 class GroqProvider:
-    def __init__(self, api_key, model, translation_client=None, language='auto'):
+    def __init__(self, api_key, model, translation_client=None, language='auto', translation_model=None):
         if model not in MODELS:
             raise ValueError('Unsupported Groq model')
         self.api_key = api_key
         self.model = model
         self.translation_client = translation_client
         self.language = language
+        from .model_config import TRANSLATION_MODELS, is_translation_model
+        self.translation_model = translation_model or TRANSLATION_MODELS[0]
+        if not is_translation_model(self.translation_model):
+            raise ValueError('Unsupported translation model')
         self.identity = f'groq:{model}:{language}:zh-TW:v1'
         self.request_count = 0
         self.uploaded_seconds = 0.0
@@ -212,8 +213,10 @@ class GroqProvider:
 
     def transcribe_saved(self, source, index, offset, duration, state, stop_event):
         from . import resume
-        cache = state.setdefault('groq_parts', {}).setdefault(str(index), {})
-        self._response_cache = state.setdefault('groq_responses', {}).setdefault(str(index), {})
+        scope = (state if state['identity']['model'] == self.identity else
+                 state.setdefault('asr_attempts', {}).setdefault(self.identity, {}))
+        cache = scope.setdefault('groq_parts', {}).setdefault(str(index), {})
+        self._response_cache = scope.setdefault('groq_responses', {}).setdefault(str(index), {})
         self._save_response = lambda: resume.save(source, state)
 
         def extract(source, start, length, out):
@@ -248,14 +251,10 @@ class GroqProvider:
                            0xac00 <= ord(ch) <= 0xd7af for ch in text)
         if self.language == 'zh' or (self.language == 'auto' and not other_script
                                     and cjk / max(1, sum(ch.isalpha() for ch in text)) >= 0.5):
+            self.last_translation_model = 'opencc:s2twp'
             converter = OpenCC('s2twp')
             return [{**cue, 'text': converter.convert(cue['text'])} for cue in cues]
-        if self.translation_client is None:
-            raise RuntimeError('Gemini API key required for non-Chinese translation')
-        if state is not None:
-            from . import resume
-            cache = state.setdefault('translation_batches', {}).setdefault(str(index), {})
-            return _translate_cues(self.translation_client,cues,DEFAULT_TARGET_LANGUAGE,
-                                   batch_cache=cache,on_batch_saved=lambda:resume.save(source,state),
-                                   stop_event=stop_event)
-        return _translate_cues(self.translation_client, cues, DEFAULT_TARGET_LANGUAGE)
+        from .model_config import translate_saved
+        self.last_translation_model = self.translation_model
+        return translate_saved(self.translation_client, cues, self.translation_model,
+                               source, state, index, stop_event)

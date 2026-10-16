@@ -7,6 +7,23 @@
 from __future__ import annotations
 
 STRINGS: dict[str, str] = {
+    "gui.lbl.translation_model": "Translation model",
+    "gui.btn.open_source": "Open source media",
+    "gui.msg.open_source_failed": "Could not open source with the default app. Check your player settings.",
+    "gui.msg.invalid_model_settings": "Invalid model settings or API key; check settings before retrying.",
+    "gui.error.quota": "Quota/rate limit reached. Resume later; another model may share the limit.",
+    "gui.error.authentication": "Invalid API key or insufficient permissions.",
+    "gui.error.model_unavailable": "Model unavailable for this account.",
+    "gui.error.invalid_request": "Request/configuration rejected; switching models may not help.",
+    "gui.error.service_unavailable": "Service/connection temporarily unavailable.",
+    "gui.error.timeout": "Request timed out.",
+    "gui.error.content_blocked": "Content/safety block; do not switch models to bypass it.",
+    "gui.error.output_truncated": "Output truncated at the model limit.",
+    "gui.error.invalid_translation_response": "Invalid/incomplete translation JSON, cue IDs or text.",
+    "gui.error.invalid_timestamps": "Timestamp validation failed.",
+    "gui.error.missing_word_timestamps": "Requested word timestamps were not returned.",
+    "gui.error.missing_translation_key": "Non-Chinese translation requires a Gemini key; set audio language to Chinese for Chinese audio.",
+    "gui.error.unknown": "Unknown error; no safely displayable specific reason available.",
     "gui.history.title": "Unfinished jobs",
     "gui.history.file": "File",
     "gui.history.service": "Service / model",
@@ -20,6 +37,7 @@ STRINGS: dict[str, str] = {
     "gui.history.changed": "File changed",
     "gui.history.unavailable": "The original file is missing or changed. Restore it and refresh to resume safely; saved progress is retained.",
     "gui.log.segment_timing_fallback": "Segment {index}: unreliable word timing; using segment timestamps from the same response, without reupload.",
+    "gui.log.segment_timing_adjusted": "Segment {index}: {count} cues had overlapping/backward word times and were shifted in order (no overlap, order kept).",
     "gui.log.all_failed": "All segments failed; progress retained. No subtitle was written or overwritten.",
     "gui.frame.service": "Transcription service",
     "gui.frame.processing_settings": "Processing settings",
@@ -108,6 +126,8 @@ STRINGS: dict[str, str] = {
     "gui.log.resume_found":     "Previous progress found; skipping {count} completed segment(s).",
     "gui.log.quota_paused":     "Free quota is temporarily exhausted. Progress is saved; select this video and start again later to resume.",
     "gui.log.resume_selected":  "Automatically selected unfinished job: {name}",
+    "gui.log.translation_model_switched": "Translation model {old} is unavailable; switched to {new}.",
+    "gui.log.translation_key_missing_auto": "No Gemini key: Chinese audio works, other languages will fail at translation.",
 
     # ── Shown on screen AND written to the log (the log copy stays
     #    Traditional Chinese by design — see logtext.py) ──
