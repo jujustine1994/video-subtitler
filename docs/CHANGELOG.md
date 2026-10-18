@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-10-17 — Two-column, DPI-aware window
+
+- Main window is now two columns (left: file, service, start, unfinished jobs;
+  right: progress + log filling the full height, failed-segment retry below) and
+  sized from the screen, so it is wide and never taller than the display.
+- Fixed pixel sizes (retry list 110 px, history columns, wrap lengths, settings
+  dialog 800x850) now scale with Windows display scaling; the settings dialog
+  sizes itself from its content.
+- Audio language selector is also on the main panel (same setting as ⚙).
+
 ## 2026-10-17 — Backward word times are shifted in order, not fatal
 
 - Root cause of frequent `non_monotonic_timestamps` /

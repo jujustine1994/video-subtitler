@@ -12,7 +12,7 @@ import threading
 import tempfile
 import time
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext, filedialog
+from tkinter import ttk, messagebox, scrolledtext, filedialog, font as tkfont
 
 from dotenv import load_dotenv, set_key
 
@@ -175,13 +175,7 @@ class SubtitlerApp:
 
         self._build_ui()
         self._apply_theme(self._current_theme)
-        self.root.update_idletasks()
-        width = min(max(860, self.root.winfo_reqwidth() + 32),
-                    self.root.winfo_screenwidth() - 60)
-        height = min(max(940, self.root.winfo_reqheight() + 40),
-                     self.root.winfo_screenheight() - 100)
-        self.root.geometry(f'{width}x{height}')
-        self.root.minsize(min(width, 760), min(height, 800))
+        self._fit_main_window()
         self._load_api_key()
         self._fetch_translation_models()
         self._poll_queue()
@@ -189,11 +183,36 @@ class SubtitlerApp:
 
     # ---- UI 建置 ----
 
+    def _px(self, value):
+        """Design pixels at 100% (96 dpi) -> real pixels at the current Windows scaling."""
+        return int(value * float(self.root.tk.call('tk', 'scaling')) / (96 / 72))
+
+    def _fit_main_window(self):
+        """Wide two-column window that never exceeds the screen (title bar + taskbar kept)."""
+        self.root.update_idletasks()
+        screen_w, screen_h = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        max_w, max_h = screen_w - self._px(40), screen_h - self._px(90)
+        req_w, req_h = self.root.winfo_reqwidth(), self.root.winfo_reqheight()
+        width = min(max_w, max(req_w + self._px(16), int(screen_w * 0.82)))
+        height = min(max_h, max(req_h + self._px(16), int(screen_h * 0.78)))
+        x, y = max(0, (screen_w - width) // 2), max(0, (screen_h - height) // 2 - self._px(20))
+        self.root.geometry(f'{width}x{height}+{x}+{y}')
+        self.root.minsize(min(width, req_w), min(height, req_h))
+
     def _build_ui(self):
-        pad = {"padx": 14, "pady": 6}
+        pad = {"padx": 10, "pady": 5}
+        # 左欄：設定與工作清單；右欄：進度 + log（吃滿高度）+ 失敗段補跑
+        self.left_panel = ttk.Frame(self.root)
+        self.left_panel.grid(row=0, column=0, sticky='nsew', padx=(6, 0), pady=(6, 0))
+        self.left_panel.columnconfigure(0, weight=1)
+        self.right_panel = ttk.Frame(self.root)
+        self.right_panel.grid(row=0, column=1, sticky='nsew', padx=(0, 6), pady=(6, 0))
+        self.right_panel.columnconfigure(0, weight=1)
+        self.right_panel.rowconfigure(0, weight=1)
+        left, right = self.left_panel, self.right_panel
 
         # === 影片檔案 ===
-        frame_file = ttk.LabelFrame(self.root, text=t("gui.frame.file"), padding=8)
+        frame_file = ttk.LabelFrame(left, text=t("gui.frame.file"), padding=8)
         frame_file.grid(row=0, column=0, sticky="ew", **pad)
         frame_file.columnconfigure(0, weight=1)
 
@@ -210,7 +229,7 @@ class SubtitlerApp:
         )
 
         # === API Key ===
-        frame_api = ttk.LabelFrame(self.root, text=t('gui.frame.service'), padding=8)
+        frame_api = ttk.LabelFrame(left, text=t('gui.frame.service'), padding=8)
         frame_api.grid(row=1, column=0, sticky="ew", **pad)
         service_row = ttk.Frame(frame_api)
         service_row.pack(fill='x')
@@ -233,8 +252,18 @@ class SubtitlerApp:
         self.translation_box = ttk.Combobox(translation_row, textvariable=self.translation_model_var,
                                             values=TRANSLATION_MODELS, state='readonly', width=30)
         self.translation_box.pack(side='left', fill='x', expand=True, padx=6)
+        language_row = ttk.Frame(frame_api)
+        language_row.pack(fill='x', pady=(6, 0))
+        ttk.Label(language_row, text=t('gui.lbl.audio_language')).pack(side='left')
+        self.audio_language_box = ttk.Combobox(
+            language_row, textvariable=self.audio_language_var,
+            values=['auto', 'zh', 'en', 'ja', 'ko'], state='readonly', width=6)
+        self.audio_language_box.pack(side='left', padx=6)
+        self.audio_language_box.bind(
+            '<<ComboboxSelected>>',
+            lambda e: self._save_config({'audio_language': self.audio_language_var.get()}))
         translation_hint = ttk.Label(frame_api, text=t('gui.lbl.translation_notice'),
-                                     wraplength=700, justify='left')
+                                     wraplength=self._px(420), justify='left')
         translation_hint.pack(anchor='w')
         def resize_hints(event):
             for label in (translation_hint,):
@@ -242,7 +271,7 @@ class SubtitlerApp:
         frame_api.bind('<Configure>', resize_hints)
 
         # === 開始按鈕 ===
-        frame_btn = tk.Frame(self.root)
+        frame_btn = tk.Frame(left)
         frame_btn.grid(row=2, column=0, pady=8)
         self.btn_start = ttk.Button(
             frame_btn, text=t("gui.btn.start"), command=self._start, width=20
@@ -258,8 +287,8 @@ class SubtitlerApp:
         ).pack(side="left", ipady=6, padx=(8, 0))
 
         # === 處理進度 ===
-        frame_progress = ttk.LabelFrame(self.root, text=t("gui.frame.progress"), padding=8)
-        frame_progress.grid(row=3, column=0, sticky="nsew", padx=14, pady=(0, 6))
+        frame_progress = ttk.LabelFrame(right, text=t("gui.frame.progress"), padding=8)
+        frame_progress.grid(row=0, column=0, sticky="nsew", **pad)
         frame_progress.columnconfigure(0, weight=1)
         frame_progress.rowconfigure(2, weight=1)
 
@@ -274,11 +303,12 @@ class SubtitlerApp:
         self.log_text.grid(row=2, column=0, sticky="nsew")
 
         # === 失敗段補跑區（預設隱藏，勾選框列表可捲動，固定高度不撐大視窗） ===
-        self.frame_retry = ttk.LabelFrame(self.root, text=t("gui.frame.retry"), padding=8)
+        self.frame_retry = ttk.LabelFrame(right, text=t("gui.frame.retry"), padding=8)
         self.retry_label = ttk.Label(self.frame_retry, text="")
         self.retry_label.pack(anchor="w")
 
-        retry_scroll_area = tk.Frame(self.frame_retry, height=110)
+        line = tkfont.nametofont('TkDefaultFont').metrics('linespace')
+        retry_scroll_area = tk.Frame(self.frame_retry, height=line * 6)
         retry_scroll_area.pack(fill="x", pady=(4, 8))
         retry_scroll_area.pack_propagate(False)
 
@@ -309,23 +339,24 @@ class SubtitlerApp:
         self.btn_retry.pack(anchor="w")
         # frame_retry 預設不 grid，有失敗段時才顯示
 
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(3, weight=1)
+        self.root.columnconfigure(0, weight=0)
+        self.root.columnconfigure(1, weight=1)
+        self.root.rowconfigure(0, weight=1)
 
         self.log_text.config(state="normal")
         self.log_text.insert("1.0", t("gui.log.hint"))
         self.log_text.config(state="disabled")
 
         self._build_status_bar()
-        history = ttk.LabelFrame(self.root, text=t('gui.history.title'), padding=8)
-        history.grid(row=5, column=0, sticky='nsew', padx=14, pady=(0, 6))
+        history = ttk.LabelFrame(left, text=t('gui.history.title'), padding=8)
+        history.grid(row=3, column=0, sticky='nsew', **pad)
         history.columnconfigure(0, weight=1)
         history.rowconfigure(0, weight=1)
-        self.root.rowconfigure(5, weight=1)
+        left.rowconfigure(3, weight=1)
         columns = ('file', 'service', 'progress', 'updated', 'status')
         self.pending_tree = ttk.Treeview(history, columns=columns, show='headings', height=6,
                                         selectmode='browse', style='History.Treeview')
-        for column, width in zip(columns, (420, 260, 100, 140, 150)):
+        for column, width in zip(columns, map(self._px, (180, 115, 65, 100, 75))):
             self.pending_tree.heading(column, text=t('gui.history.' + column))
             self.pending_tree.column(column, width=width, minwidth=width,
                                      stretch=column == 'file')
@@ -341,18 +372,20 @@ class SubtitlerApp:
         ttk.Button(controls, text=t('gui.history.resume'), command=self._resume_pending_job).pack(side='left')
         ttk.Button(controls, text=t('gui.history.refresh'), command=self._refresh_pending_jobs).pack(side='left', padx=6)
         self.pending_path_var = tk.StringVar()
-        ttk.Label(history, textvariable=self.pending_path_var, wraplength=680).grid(row=3, column=0, sticky='w')
+        path_label = ttk.Label(history, textvariable=self.pending_path_var, wraplength=self._px(420))
+        path_label.grid(row=3, column=0, sticky='w')
+        history.bind('<Configure>', lambda e: path_label.config(wraplength=max(200, e.width - 24)))
         self.pending_tree.bind('<<TreeviewSelect>>', self._pending_selection_changed)
         self._pending_jobs = {}
 
     def _build_status_bar(self):
         sep = ttk.Separator(self.root, orient="horizontal")
-        sep.grid(row=98, column=0, sticky="ew")
+        sep.grid(row=98, column=0, columnspan=2, sticky="ew")
         self._status_bar = tk.Label(
             self.root, text=t("gui.status.ready"), anchor="w", padx=10, pady=4,
             font=("Microsoft JhengHei", 11), foreground="gray",
         )
-        self._status_bar.grid(row=99, column=0, sticky="ew")
+        self._status_bar.grid(row=99, column=0, columnspan=2, sticky="ew")
 
     # ---- 主題 ----
 
@@ -397,7 +430,6 @@ class SubtitlerApp:
         win = tk.Toplevel(self.root)
         win.title(t("gui.dlg.settings_title"))
         win.resizable(True, True)
-        win.geometry('800x850')
         win.grab_set()
         self.settings_win = win
         variables = (self.api_var, self.groq_key_var, self.save_key_var,
@@ -454,6 +486,10 @@ class SubtitlerApp:
         btn_row.pack(pady=(0, 16))
         ttk.Button(btn_row, text=t("gui.btn.apply"), command=_apply, width=10).pack(side="left", padx=4, ipady=4)
         ttk.Button(btn_row, text=t("gui.btn.cancel"), command=cancel, width=10).pack(side="left", padx=4, ipady=4)
+        win.update_idletasks()
+        width = min(win.winfo_screenwidth() - self._px(40), max(win.winfo_reqwidth(), self._px(640)))
+        height = min(win.winfo_screenheight() - self._px(90), win.winfo_reqheight() + self._px(16))
+        win.geometry(f'{width}x{height}')
 
     def _build_processing_settings(self, parent):
         frame = ttk.LabelFrame(parent, text='API Keys', padding=12)
@@ -467,7 +503,7 @@ class SubtitlerApp:
             if name == 'Gemini':
                 self.api_entry = entry
         ttk.Checkbutton(frame, text=t('gui.chk.remember_key'), variable=self.save_key_var).pack(anchor='w')
-        ttk.Label(frame, text=t('gui.lbl.api_notice'), wraplength=650).pack(anchor='w')
+        ttk.Label(frame, text=t('gui.lbl.api_notice'), wraplength=self._px(560)).pack(anchor='w')
         options = ttk.LabelFrame(parent, text=t('gui.frame.processing_settings'), padding=12)
         options.pack(fill='x', padx=16, pady=6)
         row = ttk.Frame(options)
@@ -479,7 +515,7 @@ class SubtitlerApp:
         ttk.Label(row, text=t('gui.lbl.audio_language')).pack(side='left')
         ttk.Combobox(row, textvariable=self.audio_language_var, values=['auto','zh','en','ja','ko'],
                      width=6, state='readonly').pack(side='left')
-        ttk.Label(options, text=t('gui.lbl.audio_language_hint'), wraplength=650).pack(anchor='w')
+        ttk.Label(options, text=t('gui.lbl.audio_language_hint'), wraplength=self._px(560)).pack(anchor='w')
 
     # ---- 版本更新 ----
     #
@@ -511,7 +547,7 @@ class SubtitlerApp:
 
         self._update_status_label = ttk.Label(
             frame_update, text="", foreground="gray", font=("", 8),
-            justify="left", anchor="w", wraplength=340,
+            justify="left", anchor="w", wraplength=self._px(520),
         )
         self._update_status_label.pack(anchor="w", pady=(6, 0), fill="x")
 
@@ -834,7 +870,8 @@ class SubtitlerApp:
         threading.Thread(target=work, daemon=True).start()
 
     def _set_controls_busy(self, busy):
-        for widget in (self.provider_box, self.groq_model_box, self.translation_box):
+        for widget in (self.provider_box, self.groq_model_box, self.translation_box,
+                       self.audio_language_box):
             widget.config(state='disabled' if busy else 'readonly')
 
     def _open_completed_source(self):
@@ -1277,8 +1314,8 @@ class SubtitlerApp:
             ).pack(anchor="w")
             if detail_label:
                 ttk.Label(self.retry_checks_frame, text=detail_label, justify='left',
-                          wraplength=max(250, self.root.winfo_width() - 100)).pack(anchor='w', padx=24, pady=(0, 6))
-        self.frame_retry.grid(row=4, column=0, sticky="ew", padx=14, pady=(0, 6))
+                          wraplength=max(250, self.right_panel.winfo_width() - 60)).pack(anchor='w', padx=24, pady=(0, 6))
+        self.frame_retry.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 5))
 
 
 def _pick_language_on_first_run(root) -> None:
